@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Persian-first offline-first personal library"
 requires-python = ">=3.10"
 dependencies = [
+  "python-dotenv>=1.0,<2",
   "streamlit>=1.38,<2",
 ]
 
