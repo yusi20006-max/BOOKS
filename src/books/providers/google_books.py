@@ -39,20 +39,23 @@ class GoogleBooksProvider:
         *,
         language: str = "fa",
         start_index: int = 0,
-        max_results: int = 20,
+        limit: int = 20,
+        max_results: int | None = None,
     ) -> GoogleBooksPage:
         if not query.strip():
             raise ValueError("query must not be empty")
         if start_index < 0:
             raise ValueError("start_index must be non-negative")
-        if not 1 <= max_results <= 40:
-            raise ValueError("max_results must be between 1 and 40")
+        if max_results is not None:
+            limit = max_results
+        if not 1 <= limit <= 40:
+            raise ValueError("limit must be between 1 and 40")
 
         params: dict[str, Any] = {
             "q": query.strip(),
             "langRestrict": language,
             "startIndex": start_index,
-            "maxResults": max_results,
+            "maxResults": limit,
             "projection": "full",
         }
         if self.settings.google_books_api_key:
@@ -83,7 +86,7 @@ class GoogleBooksProvider:
             items=items,
             total_items=int(payload.get("totalItems", 0)),
             start_index=start_index,
-            max_results=max_results,
+            max_results=limit,
         )
 
 
