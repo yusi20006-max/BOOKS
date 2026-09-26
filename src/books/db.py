@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Mapping, Any
 
@@ -36,14 +37,14 @@ class Database:
                 for row in conn.execute("SELECT version FROM schema_migrations")
             }
             count = 0
-            for path in sorted(migrations_dir.glob("[0-9][0-9][0-9]_*.sql")):
-                version = int(path.name[:3])
+            for migration in sorted(migrations_dir.glob("[0-9][0-9][0-9]_*.sql")):
+                version = int(migration.name[:3])
                 if version in applied:
                     continue
-                conn.executescript(path.read_text(encoding="utf-8"))
+                conn.executescript(migration.read_text(encoding="utf-8"))
                 conn.execute(
                     "INSERT INTO schema_migrations(version, name) VALUES (?, ?)",
-                    (version, path.name),
+                    (version, migration.name),
                 )
                 count += 1
         return count
@@ -66,22 +67,42 @@ def transaction(db: Database) -> Iterator[sqlite3.Connection]:
 class BookRepository:
     """Persistence operations for the initial Book storage contract."""
 
+    _JSON_DEFAULTS = {
+        "authors_json": "[]",
+        "translators_json": "[]",
+        "genres_json": "[]",
+        "subjects_json": "[]",
+        "source_ids_json": "{}",
+    }
+
     def __init__(self, db: Database):
         self.db = db
 
     def create(self, book: Mapping[str, Any]) -> str:
         book_id = str(book["id"])
+        now = datetime.now(timezone.utc).isoformat()
         columns = (
             "id", "title", "original_title", "authors_json", "translators_json",
             "publisher", "pages", "publication_year", "isbn10", "isbn13", "language",
             "genres_json", "subjects_json", "summary", "cover_url", "source_ids_json",
             "notes", "created_at", "updated_at",
         )
-        values = tuple(book.get(column) for column in columns)
+        values = []
+        for column in columns:
+            if column in ("created_at", "updated_at"):
+                value = book.get(column, now)
+            else:
+                value = book.get(column, self._JSON_DEFAULTS.get(column))
+
+            values.append(value)
+
+        if not book.get("title"):
+            raise ValueError("title is required")
+
         with transaction(self.db) as conn:
             conn.execute(
                 f"INSERT INTO books ({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)})",
-                values,
+                tuple(values),
             )
         return book_id
 
