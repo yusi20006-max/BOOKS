@@ -596,3 +596,36 @@ class BookRepository:
         with transaction(self.db) as conn:
             result = conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
             return result.rowcount == 1
+
+
+    def add_reading_session(self, session_id: str, book_id: str, started_at: str, minutes: int, pages: int, note: str | None = None) -> None:
+        with transaction(self.db) as conn:
+            conn.execute("INSERT INTO reading_sessions(id,book_id,started_at,minutes,pages,note) VALUES(?,?,?,?,?,?)", (session_id, book_id, started_at, minutes, pages, note))
+
+    def list_reading_sessions(self, book_id: str, limit: int = 100) -> list[sqlite3.Row]:
+        with self.db.connect() as conn:
+            return conn.execute("SELECT * FROM reading_sessions WHERE book_id=? ORDER BY started_at DESC LIMIT ?", (book_id, limit)).fetchall()
+
+    def add_note(self, note_id: str, book_id: str, text: str, page: int | None = None) -> None:
+        with transaction(self.db) as conn:
+            conn.execute("INSERT INTO notes(id,book_id,text,page) VALUES(?,?,?,?)", (note_id, book_id, text, page))
+
+    def add_quote(self, quote_id: str, book_id: str, text: str, page: int | None = None, source: str | None = None) -> None:
+        with transaction(self.db) as conn:
+            conn.execute("INSERT INTO quotes(id,book_id,text,page,source) VALUES(?,?,?,?,?)", (quote_id, book_id, text, page, source))
+
+    def list_knowledge(self, book_id: str) -> dict[str, list[sqlite3.Row]]:
+        with self.db.connect() as conn:
+            return {"notes": conn.execute("SELECT * FROM notes WHERE book_id=? ORDER BY created_at DESC", (book_id,)).fetchall(), "quotes": conn.execute("SELECT * FROM quotes WHERE book_id=? ORDER BY created_at DESC", (book_id,)).fetchall()}
+
+    def add_copy(self, copy_id: str, book_id: str, condition: str = "good", status: str = "available", internal_code: str | None = None) -> None:
+        with transaction(self.db) as conn:
+            conn.execute("INSERT INTO physical_copies(id,book_id,condition,status,internal_code) VALUES(?,?,?,?,?)", (copy_id, book_id, condition, status, internal_code))
+
+    def add_loan(self, loan_id: str, copy_id: str, borrower_id: str, loaned_on: str, due_on: str | None = None, notes: str | None = None) -> None:
+        with transaction(self.db) as conn:
+            conn.execute("INSERT INTO loans(id,copy_id,borrower_id,loaned_on,due_on,notes) VALUES(?,?,?,?,?,?)", (loan_id, copy_id, borrower_id, loaned_on, due_on, notes))
+
+    def list_loans(self, limit: int = 100) -> list[sqlite3.Row]:
+        with self.db.connect() as conn:
+            return conn.execute("SELECT * FROM loans ORDER BY loaned_on DESC LIMIT ?", (limit,)).fetchall()
