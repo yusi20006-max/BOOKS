@@ -460,6 +460,46 @@ class BookRepository:
                     (book_id, row["id"]),
                 )
 
+    def get_metadata_cache(
+        self,
+        provider: str,
+        cache_key: str,
+        language: str,
+        max_age_seconds: int,
+    ) -> str | None:
+        cutoff = datetime.now(timezone.utc).timestamp() - max_age_seconds
+        with self.db.connect() as conn:
+            row = conn.execute(
+                """SELECT payload_json, fetched_at FROM metadata_cache
+                   WHERE provider = ? AND cache_key = ? AND language = ?""",
+                (provider, cache_key, language),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            fetched = datetime.fromisoformat(row["fetched_at"]).timestamp()
+        except ValueError:
+            return None
+        return row["payload_json"] if fetched >= cutoff else None
+
+    def set_metadata_cache(
+        self,
+        provider: str,
+        cache_key: str,
+        language: str,
+        payload_json: str,
+    ) -> None:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        with transaction(self.db) as conn:
+            conn.execute(
+                """INSERT INTO metadata_cache(provider, cache_key, language, payload_json, fetched_at)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(provider, cache_key, language) DO UPDATE SET
+                       payload_json = excluded.payload_json,
+                       fetched_at = excluded.fetched_at""",
+                (provider, cache_key, language, payload_json, timestamp),
+            )
+
     def find_duplicates(self, book: Book, exclude_id: str | None = None) -> list[sqlite3.Row]:
         candidates: list[sqlite3.Row] = []
         with self.db.connect() as conn:
