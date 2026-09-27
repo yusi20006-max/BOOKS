@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-
 from .catalog import Edition, Translation
 from .normalization import normalize_text
 
