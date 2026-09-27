@@ -1024,7 +1024,7 @@ def render_ai_assistant() -> None:
     context=st.text_area("زمینه یا پرسش")
     if st.button("اجرا",type="primary"):
         try: st.write(BookAIService(local_first_provider()).action(action,labels[book_id],context))
-        except Exception as exc: st.error(f"اتصال به درگاه هوش مصنوعی ناموفق بود: {exc}")
+        except RuntimeError as exc: st.error(f"اتصال به درگاه هوش مصنوعی ناموفق بود: {exc}")
     with st.expander("خلاصه فصل/کتاب و برنامه مطالعه"):
         text=st.text_area("متن",key="ai-text"); chapter=st.text_input("عنوان فصل",key="ai-chapter"); goal=st.text_input("هدف مطالعه",key="ai-goal")
         if text and st.button("خلاصه کتاب"): st.write(BookAIService(local_first_provider()).summarize(labels[book_id],text))
