@@ -34,6 +34,7 @@ PAGES = {
     "کتاب‌های صوتی": "پخش و ثبت پیشرفت کتاب صوتی",
     "حاشیه‌نویسی دیجیتال": "نشانک، هایلایت و یادداشت در کتاب دیجیتال",
     "قرض‌ها": "مدیریت نسخه‌های فیزیکی و امانت",
+    "مجموعه و ویرایش‌ها": "مجموعه‌ها، جلدها، ویرایش‌ها و ترجمه‌ها",
     "اسکن و OCR": "اسکن متن و اصلاح قبل از ذخیره",
     "گزارش‌ها": "گزارش موجودی و مطالعه",
     "تنظیمات": "تنظیمات برنامه و داده‌ها",
@@ -950,6 +951,21 @@ def render_annotations() -> None:
     st.dataframe([dict(row) for row in annotations], use_container_width=True)
 
 
+
+def render_catalog_editions() -> None:
+    settings = load_settings()
+    store = __import__("books.catalog_store", fromlist=["CatalogStore"]).CatalogStore(Database(settings.db_path))
+    store.db.migrate()
+    st.subheader("مجموعه‌ها و ویرایش‌ها")
+    series = store.list_series()
+    if series:
+        for item in series:
+            st.write(f"**{item['name']}** — {item['description'] or 'بدون توضیح'}")
+    else:
+        st.info("هنوز مجموعه‌ای ثبت نشده است.")
+    st.caption("ترجمه‌های هر ویرایش مستقل نگهداری می‌شوند و در لایه نمایش بر اساس زبان گروه‌بندی می‌شوند.")
+
+
 def render_reading_sessions() -> None:
     settings = load_settings()
     repository = BookRepository(Database(settings.db_path))
@@ -1132,6 +1148,8 @@ def render_page(page: str) -> None:
         render_annotations()
     elif page == "قرض‌ها":
         render_loans()
+    elif page == "مجموعه و ویرایش‌ها":
+        render_catalog_editions()
     elif page == "اسکن و OCR":
         render_ocr()
     elif page == "گزارش‌ها":
