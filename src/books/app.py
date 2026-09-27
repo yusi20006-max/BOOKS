@@ -382,11 +382,34 @@ def render_reading_status() -> None:
     )
     st.caption(f"وضعیت فعلی: {repository.READING_STATUSES.get(current, current)}")
 
-    if st.button("ذخیره وضعیت", type="primary"):
+    if st.button("ذخیره وضعیت", type="primary", key="save-reading-status"):
         if repository.update_reading_status(selected_id, status):
             st.success("وضعیت مطالعه ذخیره شد.")
         else:
             st.error("کتاب پیدا نشد.")
+
+    total_pages = row["pages"]
+    if total_pages:
+        current_page = st.number_input(
+            f"صفحه فعلی از {total_pages}",
+            min_value=0,
+            max_value=total_pages,
+            value=row["reading_current_page"] or 0,
+            step=1,
+        )
+        st.progress(
+            (row["reading_progress"] or 0) / 100,
+            text=f"پیشرفت: {row['reading_progress'] or 0}٪",
+        )
+        if st.button("ذخیره پیشرفت", type="primary", key="save-reading-progress"):
+            try:
+                progress = repository.update_reading_progress(selected_id, int(current_page))
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.success(f"پیشرفت به {progress}٪ رسید.")
+    else:
+        st.info("برای محاسبه پیشرفت، تعداد صفحات کتاب را در ویرایش کتاب وارد کنید.")
 
 
 
@@ -575,7 +598,7 @@ def render_library() -> None:
                         f"**سال:** {summary['year']} · "
                         f"**ISBN:** {summary['isbn']}"
                     )
-                    st.caption(f"وضعیت مطالعه: {BookRepository.READING_STATUSES.get(row['reading_status'], 'نخوانده')}")
+                    st.caption(f"وضعیت مطالعه: {BookRepository.READING_STATUSES.get(row['reading_status'], 'نخوانده')} · پیشرفت: {row['reading_progress'] or 0}٪")
     else:
         columns = st.columns(3)
         for index, row in enumerate(rows):
