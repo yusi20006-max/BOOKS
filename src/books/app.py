@@ -34,6 +34,7 @@ PAGES = {
     "کتاب‌های صوتی": "پخش و ثبت پیشرفت کتاب صوتی",
     "حاشیه‌نویسی دیجیتال": "نشانک، هایلایت و یادداشت در کتاب دیجیتال",
     "قرض‌ها": "مدیریت نسخه‌های فیزیکی و امانت",
+    "اهداف و تقویم مطالعه": "هدف، جلسه، زنجیره و تقویم مطالعه",
     "مجموعه و ویرایش‌ها": "مجموعه‌ها، جلدها، ویرایش‌ها و ترجمه‌ها",
     "اسکن و OCR": "اسکن متن و اصلاح قبل از ذخیره",
     "گزارش‌ها": "گزارش موجودی و مطالعه",
@@ -966,6 +967,31 @@ def render_catalog_editions() -> None:
     st.caption("ترجمه‌های هر ویرایش مستقل نگهداری می‌شوند و در لایه نمایش بر اساس زبان گروه‌بندی می‌شوند.")
 
 
+
+def render_reading_journal() -> None:
+    settings = load_settings()
+    from .reading_journal import ReadingGoal
+    from .reading_journal_store import ReadingJournalStore
+    store = ReadingJournalStore(Database(settings.db_path))
+    store.db.migrate()
+    st.subheader("اهداف و تقویم مطالعه")
+    with st.form("reading-goal"):
+        books_target = st.number_input("هدف تعداد کتاب", min_value=0, value=1)
+        pages_target = st.number_input("هدف تعداد صفحه", min_value=0, value=100)
+        start = st.date_input("شروع هدف")
+        end = st.date_input("پایان هدف")
+        if st.form_submit_button("ثبت هدف", type="primary"):
+            try:
+                store.add_goal(ReadingGoal(str(__import__("uuid").uuid4()), int(books_target), int(pages_target), start, end))
+                st.success("هدف مطالعه ثبت شد.")
+            except ValueError as exc: st.error(str(exc))
+    goals=store.goals(); goal=goals[0] if goals else None; dashboard=store.dashboard(goal)
+    c1,c2,c3=st.columns(3); c1.metric("دقیقه",dashboard["minutes"]); c2.metric("صفحه",dashboard["pages"]); c3.metric("زنجیره روزانه",dashboard["streak"])
+    if goal: st.json(dashboard["goal_progress"])
+    st.write("نقاط عطف:", "، ".join(map(str,dashboard["milestones"])) or "هنوز ثبت نشده")
+    st.dataframe([{"تاریخ":k.isoformat(),"دقیقه":v} for k,v in dashboard["calendar"].items()], use_container_width=True)
+
+
 def render_reading_sessions() -> None:
     settings = load_settings()
     repository = BookRepository(Database(settings.db_path))
@@ -1142,6 +1168,8 @@ def render_page(page: str) -> None:
         render_personal_data()
     elif page == "جلسات مطالعه":
         render_reading_sessions()
+    elif page == "اهداف و تقویم مطالعه":
+        render_reading_journal()
     elif page == "کتاب‌های صوتی":
         render_audiobooks()
     elif page == "حاشیه‌نویسی دیجیتال":
