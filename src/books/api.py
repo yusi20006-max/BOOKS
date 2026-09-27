@@ -4,6 +4,7 @@ from time import monotonic
 from typing import Any
 from .db import BookRepository
 
+
 @dataclass(slots=True)
 class RateLimiter:
     limit: int=60; window: float=60.0
