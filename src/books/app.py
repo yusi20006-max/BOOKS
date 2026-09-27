@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import sqlite3
+
 import streamlit as st
 
 from .config import load_settings
+from .db import BookRepository, Database
 from .discovery import DiscoveryService, MergedDiscoveryItem
 from .providers.google_books import GoogleBooksProvider
 from .providers.open_library import OpenLibraryProvider
@@ -209,6 +212,7 @@ def render_confirm_edit() -> None:
 
     st.session_state["edited_candidate"] = edited
     st.success("اطلاعات معتبر است و پیش‌نمایش آماده شد.")
+    _render_save_action(edited)
     with st.container(border=True):
         st.subheader(edited.title)
         st.write(f"**نویسنده:** {'، '.join(edited.authors) or '—'}")
@@ -222,6 +226,35 @@ def render_confirm_edit() -> None:
         st.write(f"**موضوع:** {'، '.join(edited.subjects) or '—'}")
         st.write(f"**خلاصه:** {edited.summary or '—'}")
 
+
+def _render_save_action(book) -> None:
+    st.divider()
+    st.subheader("افزودن به کتابخانه")
+    if st.button("ذخیره کتاب در کتابخانه", type="primary", key="save-confirmed-book"):
+        settings = load_settings()
+        db = Database(settings.db_path)
+        db.migrate()
+        repository = BookRepository(db)
+
+        existing = None
+        if book.isbn13:
+            existing = repository.get_by_isbn(book.isbn13)
+        if existing is None and book.isbn10:
+            existing = repository.get_by_isbn(book.isbn10)
+
+        if existing is not None:
+            st.warning("این کتاب با همین ISBN قبلاً در کتابخانه وجود دارد و دوباره ذخیره نشد.")
+            st.session_state["saved_book_id"] = existing["id"]
+            return
+
+        try:
+            book_id = repository.create_book(book)
+        except sqlite3.IntegrityError:
+            st.warning("رکورد مشابه قبلاً ذخیره شده است و از ایجاد Duplicate جلوگیری شد.")
+            return
+
+        st.session_state["saved_book_id"] = book_id
+        st.success("کتاب با موفقیت در SQLite ذخیره شد.")
 
 def render_discovery() -> None:
     settings = load_settings()
