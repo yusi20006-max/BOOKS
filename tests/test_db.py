@@ -32,12 +32,12 @@ def book(book_id="b1"):
 
 def test_migration_is_idempotent(tmp_path):
     db = Database(tmp_path / "books.sqlite3")
-    assert db.migrate() == 10
+    assert db.migrate() == 11
     assert db.migrate() == 0
     with db.connect() as conn:
         assert conn.execute(
             "SELECT COUNT(*) FROM schema_migrations"
-        ).fetchone()[0] == 10
+        ).fetchone()[0] == 11
 
 
 def test_repository_crud_and_persistence(tmp_path):
