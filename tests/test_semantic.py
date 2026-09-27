@@ -1,5 +1,6 @@
 import sqlite3
-from books.semantic import HashEmbeddingProvider,VectorStore,cosine,hybrid_score,semantic_search,recommend_similar
+
+from books.semantic import cosine, HashEmbeddingProvider, hybrid_score, recommend_similar, semantic_search, VectorStore
 
 def test_embedding_is_normalized_and_deterministic():
  p=HashEmbeddingProvider(32); a=p.embed("کتاب فارسی"); assert a==p.embed("کتاب فارسی") and abs(cosine(a,a)-1)<1e-9
