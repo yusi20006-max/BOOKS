@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -51,7 +50,7 @@ class BackupScheduler:
         temp.write_bytes(data)
         temp.replace(self.destination)
         self.state_path.write_text(
-            json.dumps({"last_run": datetime.now().isoformat()}), encoding="utf-8"
+            json.dumps({"last_run": datetime.now().astimezone().isoformat()}), encoding="utf-8"
         )
         return self.destination
 
