@@ -6,7 +6,7 @@ from books.models import Book
 
 def test_reading_status_defaults_to_unread_and_persists(tmp_path):
     db = Database(tmp_path / "books.sqlite3")
-    assert db.migrate() == 10
+    assert db.migrate() == 11
     repository = BookRepository(db)
     book_id = repository.create_book(Book(title="کتاب"))
 

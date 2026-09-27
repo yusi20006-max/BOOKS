@@ -8,7 +8,7 @@ from books.models import Book
 
 def test_reading_dates_are_timezone_safe_and_persistent(tmp_path):
     db = Database(tmp_path / "books.sqlite3")
-    assert db.migrate() == 10
+    assert db.migrate() == 11
     repository = BookRepository(db)
     book_id = repository.create_book(Book(title="کتاب"))
 

@@ -6,7 +6,7 @@ from books.models import Book
 
 def test_audiobook_player_state_persists(tmp_path: Path):
     db = Database(tmp_path / "books.sqlite3")
-    assert db.migrate() == 10
+    assert db.migrate() == 11
     repo = BookRepository(db)
     book_id = repo.create_book(Book(title="کتاب صوتی"), book_id="book-1")
 

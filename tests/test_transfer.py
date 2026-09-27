@@ -5,7 +5,7 @@ from books.transfer import BookTransferService
 
 def test_json_round_trip_preserves_core_and_personal_data(tmp_path):
     db = Database(tmp_path / "source.sqlite3")
-    assert db.migrate() == 10
+    assert db.migrate() == 11
     repository = BookRepository(db)
     book_id = repository.create_book(
         Book(
