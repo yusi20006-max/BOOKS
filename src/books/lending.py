@@ -30,3 +30,11 @@ class Loan:
     @property
     def status(self) -> str:
         return "returned" if self.returned_on else "active"
+
+
+def due_state(loan: Loan, today: date) -> str:
+    if loan.returned_on: return "returned"
+    if loan.due_on is None: return "no_due_date"
+    if loan.due_on < today: return "overdue"
+    if (loan.due_on - today).days <= 7: return "due_soon"
+    return "active"
