@@ -3,11 +3,14 @@ from __future__ import annotations
 import streamlit as st
 
 from .config import load_settings
+from .discovery import DiscoveryService, MergedDiscoveryItem
+from .providers.google_books import GoogleBooksProvider
+from .providers.open_library import OpenLibraryProvider
 
 
 PAGES = {
     "کتابخانه": "نمایش و مدیریت کتاب‌های ذخیره‌شده",
-    "افزودن کتاب": "افزودن کتاب از منابع مختلف",
+    "افزودن کتاب": "جستجو و انتخاب کتاب از منابع مختلف",
     "مطالعه": "پیگیری وضعیت و پیشرفت مطالعه",
     "یادداشت‌ها": "یادداشت‌ها و نقل‌قول‌های شخصی",
     "تنظیمات": "تنظیمات برنامه و داده‌ها",
@@ -51,6 +54,72 @@ def render_sidebar() -> str:
     )
 
 
+def candidate_summary(candidate: MergedDiscoveryItem) -> dict[str, str]:
+    book = candidate.book
+    return {
+        "عنوان": book.title,
+        "نویسنده": "، ".join(book.authors) or "—",
+        "مترجم": "، ".join(book.translators) or "—",
+        "ناشر": book.publisher or "—",
+        "سال": str(book.publication_year) if book.publication_year else "—",
+        "ISBN": book.isbn13 or book.isbn10 or "—",
+        "منبع": "، ".join(p.provider for p in candidate.provenance) or "—",
+        "اطمینان": f"{candidate.confidence:.0%}",
+    }
+
+
+def render_candidate(candidate: MergedDiscoveryItem, index: int) -> None:
+    book = candidate.book
+    left, right = st.columns([1, 3], gap="medium")
+    with left:
+        if book.cover_url:
+            st.image(book.cover_url, use_container_width=True)
+        else:
+            st.caption("جلد موجود نیست")
+    with right:
+        st.subheader(book.title)
+        st.write(f"**نویسنده:** {'، '.join(book.authors) or '—'}")
+        st.write(f"**مترجم:** {'، '.join(book.translators) or '—'}")
+        st.write(f"**ناشر:** {book.publisher or '—'}")
+        st.write(
+            f"**سال:** {book.publication_year or '—'}  ·  "
+            f"**ISBN:** {book.isbn13 or book.isbn10 or '—'}"
+        )
+        sources = "، ".join(p.provider for p in candidate.provenance) or "—"
+        st.caption(f"منبع: {sources} | اطمینان تطبیق: {candidate.confidence:.0%}")
+        if st.button("انتخاب این کتاب", key=f"select-candidate-{index}", type="primary"):
+            st.session_state["selected_candidate"] = candidate
+            st.success("این نتیجه انتخاب شد؛ مرحله تأیید و ویرایش در Issue بعدی انجام می‌شود.")
+
+
+def render_discovery() -> None:
+    settings = load_settings()
+    query = st.text_input("عنوان، نویسنده یا ISBN", placeholder="مثلاً شازده کوچولو")
+    limit = st.slider("تعداد نتایج", min_value=1, max_value=20, value=10)
+    search = st.button("جستجوی کتاب", type="primary", disabled=not query.strip())
+
+    if search:
+        service = DiscoveryService(
+            [
+                ("google_books", GoogleBooksProvider(settings)),
+                ("open_library", OpenLibraryProvider(settings)),
+            ]
+        )
+        with st.spinner("در حال جستجو در منابع کتاب..."):
+            response = service.search_merged(query.strip(), language="fa", limit=limit)
+        st.session_state["discovery_candidates"] = response
+
+    candidates = st.session_state.get("discovery_candidates", ())
+    if not candidates:
+        st.info("برای شروع، عنوان، نام نویسنده یا ISBN را جستجو کنید.")
+        return
+
+    st.subheader(f"{len(candidates)} نتیجه")
+    for index, candidate in enumerate(candidates):
+        with st.container(border=True):
+            render_candidate(candidate, index)
+
+
 def render_page(page: str) -> None:
     st.title(page)
     st.caption(PAGES[page])
@@ -58,7 +127,7 @@ def render_page(page: str) -> None:
     if page == "کتابخانه":
         st.info("کتاب‌های شما در این بخش نمایش داده می‌شوند.")
     elif page == "افزودن کتاب":
-        st.info("افزودن کتاب در Issueهای Discovery تکمیل می‌شود.")
+        render_discovery()
     elif page == "مطالعه":
         st.info("مدیریت مطالعه در Phaseهای Reading Management تکمیل می‌شود.")
     elif page == "یادداشت‌ها":
