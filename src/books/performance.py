@@ -10,7 +10,7 @@ from time import monotonic
 class TTLCache:
  capacity: int = 256
  ttl: float = 60.0
- data: OrderedDict = field(init=False, repr=False)
+ data: OrderedDict = field(default_factory=OrderedDict, init=False, repr=False)
  def get(self,key):
   item=self.data.get(key)
   if item is None: return None
