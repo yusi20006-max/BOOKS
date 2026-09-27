@@ -1,5 +1,5 @@
 from books.catalog import Edition
-from books.edition_compare import compare_editions,is_duplicate_edition,deduplicate_editions
+from books.edition_compare import compare_editions, deduplicate_editions, is_duplicate_edition
 
 
 def e(i,**kw): return Edition(i,kw.pop("work_id","w"),**kw)
