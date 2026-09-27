@@ -1,6 +1,5 @@
 import pytest
 
-import pytest
 from books.db import BookRepository, Database
 from books.models import Book
 
