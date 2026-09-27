@@ -1,6 +1,7 @@
 import pytest
 from books.mcp import build_server
 
+
 class R:
  def search(self,q,limit=100): return [{"q":q}]
  def get(self,i): return {"id":i}
