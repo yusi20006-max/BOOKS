@@ -17,3 +17,16 @@ class Borrower:
     id: str
     name: str
     phone: str|None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Loan:
+    copy_id: str
+    borrower_id: str
+    loaned_on: date
+    due_on: date|None = None
+    returned_on: date|None = None
+    notes: str|None = None
+    @property
+    def status(self) -> str:
+        return "returned" if self.returned_on else "active"
