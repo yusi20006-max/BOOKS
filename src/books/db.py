@@ -695,3 +695,16 @@ class BookRepository:
                 (position_seconds, speed, audiobook_id),
             )
             return result.rowcount == 1
+
+
+    def add_annotation(self, annotation_id: str, book_id: str, kind: str, locator: str, text: str | None = None, note: str | None = None) -> None:
+        from .digital import Annotation
+        Annotation(book_id, kind, locator, text, note)
+        with transaction(self.db) as conn:
+            if conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone() is None:
+                raise ValueError("book not found")
+            conn.execute("INSERT INTO annotations(id,book_id,kind,locator,text,note) VALUES(?,?,?,?,?,?)", (annotation_id, book_id, kind, locator.strip(), text, note))
+
+    def list_annotations(self, book_id: str, limit: int = 500) -> list[sqlite3.Row]:
+        with self.db.connect() as conn:
+            return conn.execute("SELECT * FROM annotations WHERE book_id = ? ORDER BY created_at DESC LIMIT ?", (book_id, limit)).fetchall()
