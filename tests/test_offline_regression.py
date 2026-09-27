@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 
-from books.db import Database, BookRepository
+from books.db import BookRepository, Database
 from books.discovery import DiscoveryService
 from books.models import Book
-from books.normalization import normalize_text, normalize_isbn
+from books.normalization import normalize_isbn, normalize_text
 from books.providers.google_books import GoogleBooksProvider
 from books.providers.open_library import OpenLibraryProvider
 
