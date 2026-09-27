@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 import unicodedata
 
-
 _ARABIC_TO_ASCII = str.maketrans(
     "٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹",
     "01234567890123456789",

@@ -1,4 +1,5 @@
 import json
+import sqlite3
 
 import pytest
 
@@ -58,5 +59,5 @@ def test_duplicate_isbn_is_rejected(tmp_path):
     db.migrate()
     repo = BookRepository(db)
     repo.create(book("b1"))
-    with pytest.raises(Exception):
+    with pytest.raises(sqlite3.IntegrityError):
         repo.create(book("b2"))

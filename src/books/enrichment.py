@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import replace
-from typing import Any, Sequence
+from typing import Any
 
 from .db import BookRepository
 from .discovery import DiscoveryResponse, DiscoveryResult, DiscoveryService
@@ -66,11 +67,11 @@ class MetadataEnricher:
                         ),
                     )
                 results.append(DiscoveryResult(name, items, len(items)))
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 results.append(DiscoveryResult(name, (), 0, str(exc)))
 
         merged = DiscoveryService.merge_results(
-            DiscoveryResponse(tuple(results), tuple())
+            DiscoveryResponse(tuple(results), ())
         )
         candidate = self._select_candidate(book, merged)
         return self._fill_missing(book, candidate.book if candidate else None)

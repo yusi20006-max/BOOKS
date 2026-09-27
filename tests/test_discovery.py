@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from books.discovery import DiscoveryService
+from books.discovery import DiscoveryResponse, DiscoveryResult, DiscoveryService
 from books.models import Book
 
 

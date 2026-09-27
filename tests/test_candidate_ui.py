@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from books.app import candidate_summary
-from books.discovery import SourceProvenance, MergedDiscoveryItem
+from books.discovery import MergedDiscoveryItem, SourceProvenance
 from books.models import Book
 
 

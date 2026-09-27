@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Mapping
+from collections.abc import Mapping
 
 from .normalization import normalize_isbn, normalize_text, validate_isbn10, validate_isbn13
 

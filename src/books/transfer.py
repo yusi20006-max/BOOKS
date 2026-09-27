@@ -142,7 +142,7 @@ class BookTransferService:
     def _import_snapshot(self, data: dict[str, Any]) -> int:
         books = data.get("books")
         if not isinstance(books, list):
-            raise ValueError("JSON books must be a list")
+            raise TypeError("JSON books must be a list")
         personal = {
             row["book_id"]: row
             for row in data.get("book_personal", [])
@@ -170,7 +170,7 @@ class BookTransferService:
         imported = 0
         for row in books:
             if not isinstance(row, dict):
-                raise ValueError("invalid book row")
+                raise TypeError("invalid book row")
             enriched = dict(row)
             p = personal.get(str(row.get("id")), {})
             enriched.update(

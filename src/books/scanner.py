@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from .normalization import normalize_isbn, validate_isbn10, validate_isbn13
 
@@ -29,7 +30,7 @@ class BarcodeScanner:
             decoded = tuple(self.decoder(image) or ())
         except ImportError:
             return ScanResult(None, None, None, "barcode decoder is not installed")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return ScanResult(None, None, None, str(exc) or "barcode decoding failed")
 
         for item in decoded:
