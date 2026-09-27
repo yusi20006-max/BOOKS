@@ -30,6 +30,7 @@ PAGES = {
     "آمار مطالعه": "داشبورد آمار کتابخانه و مطالعه",
     "مطالعه": "پیگیری وضعیت و پیشرفت مطالعه",
     "یادداشت‌ها": "یادداشت‌ها و نقل‌قول‌های شخصی",
+    "دانش شخصی": "نقل‌قول، هایلایت، یادداشت و گراف دانش",
     "جلسات مطالعه": "ثبت جلسات مطالعه در SQLite",
     "کتاب‌های صوتی": "پخش و ثبت پیشرفت کتاب صوتی",
     "حاشیه‌نویسی دیجیتال": "نشانک، هایلایت و یادداشت در کتاب دیجیتال",
@@ -992,6 +993,23 @@ def render_reading_journal() -> None:
     st.dataframe([{"تاریخ":k.isoformat(),"دقیقه":v} for k,v in dashboard["calendar"].items()], use_container_width=True)
 
 
+
+def render_knowledge_base() -> None:
+    settings = load_settings()
+    from .knowledge_store import KnowledgeStore
+    from .knowledge import KnowledgeEdge, KnowledgeNode
+    store = KnowledgeStore(Database(settings.db_path)); store.db.migrate()
+    st.subheader("دانش شخصی، نقل‌قول و مفاهیم")
+    rows = store.search(st.text_input("جستجوی یکپارچه در یادداشت‌ها، نقل‌قول‌ها و مفاهیم", key="knowledge-search")) if st.session_state.get("knowledge-search") else []
+    if rows: st.dataframe([{"نوع":type(x).__name__,"متن":getattr(x,"text",getattr(x,"label","")),"صفحه":getattr(x,"page",None)} for x in rows],use_container_width=True)
+    with st.form("knowledge-node"):
+        label=st.text_input("مفهوم"); kind=st.text_input("نوع",value="concept"); save=st.form_submit_button("ثبت مفهوم")
+        if save:
+            try: store.add_node(KnowledgeNode(str(__import__("uuid").uuid4()),label,kind)); st.success("مفهوم ثبت شد.")
+            except ValueError as exc: st.error(str(exc))
+    st.write("مفاهیم ثبت‌شده:", "، ".join(node.label for node in store.nodes()) or "—")
+
+
 def render_reading_sessions() -> None:
     settings = load_settings()
     repository = BookRepository(Database(settings.db_path))
@@ -1166,6 +1184,8 @@ def render_page(page: str) -> None:
         render_reading_status()
     elif page == "یادداشت‌ها":
         render_personal_data()
+    elif page == "دانش شخصی":
+        render_knowledge_base()
     elif page == "جلسات مطالعه":
         render_reading_sessions()
     elif page == "اهداف و تقویم مطالعه":
