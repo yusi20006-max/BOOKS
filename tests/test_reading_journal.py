@@ -1,5 +1,6 @@
 from datetime import date
-from books.reading_journal import ReadingGoal,ReadingSession,streak_days,goal_progress,calendar_sessions,milestones
+
+from books.reading_journal import calendar_sessions, goal_progress, milestones, ReadingGoal, ReadingSession, streak_days
 
 def test_goal_and_progress():
  g=ReadingGoal("g",10,1000,date(2026,1,1),date(2026,12,31)); assert goal_progress(g,2,250)=={"books":20.0,"pages":25.0}
