@@ -1,5 +1,6 @@
 from datetime import date
-from books.db import Database, BookRepository
+
+from books.db import BookRepository, Database
 from books.models import Book
 from books.reading_journal import ReadingGoal
 from books.reading_journal_store import ReadingJournalStore
