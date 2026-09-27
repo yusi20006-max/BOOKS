@@ -46,3 +46,19 @@ def test_scanner_isolates_decoder_failure():
 
     assert result.isbn is None
     assert result.error == "decoder down"
+
+
+def test_default_decoder_reports_optional_dependency(monkeypatch):
+    def fail_import(name, *args, **kwargs):
+        if name == "zxingcpp":
+            raise ImportError("zxingcpp unavailable")
+        return original_import(name, *args, **kwargs)
+
+    import builtins
+    original_import = builtins.__import__
+    monkeypatch.setattr(builtins, "__import__", fail_import)
+
+    result = BarcodeScanner().scan(object())
+
+    assert result.isbn is None
+    assert result.error == "barcode decoder is not installed; install BOOKS with the [barcode] extra"
