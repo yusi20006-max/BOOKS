@@ -54,9 +54,6 @@ def make_handler(runtime: Runtime):
                 self._write(400, {"error": "invalid request"})
 
         def do_POST(self) -> None:
-            if self.path != "/mcp":
-                self._write(404, {"error": "endpoint not found"})
-                return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 request = json.loads(self.rfile.read(length))
@@ -70,6 +67,9 @@ def make_handler(runtime: Runtime):
                 if self.path == "/v1/sync/changes":
                     change = request
                     self._write(200, {"accepted": True, "id": change["id"]})
+                    return
+                if self.path != "/mcp":
+                    self._write(404, {"error": "endpoint not found"})
                     return
                 params = request["params"]
                 result = runtime.mcp.call(
