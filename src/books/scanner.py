@@ -7,7 +7,6 @@ from typing import Any
 
 from .normalization import normalize_isbn, validate_isbn10, validate_isbn13
 
-
 _ISBN_RE = re.compile(r"(?<!\d)(?:97[89]\d{10}|\d{9}[0-9X])(?!\d)", re.IGNORECASE)
 
 
