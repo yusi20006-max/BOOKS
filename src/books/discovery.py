@@ -230,8 +230,8 @@ def _match_confidence(left: Book, right: Book) -> tuple[float, tuple[str, ...]]:
     if left_isbns & right_isbns:
         return 1.0, ("isbn",)
 
-    left_title = normalize_text(left.title)
-    right_title = normalize_text(right.title)
+    left_title = _title_match_key(left.title)
+    right_title = _title_match_key(right.title)
     if left_title != right_title:
         return 0.0, ()
 
@@ -310,6 +310,10 @@ def _merge_provenance(
             seen.add(key)
             result.append(item)
     return tuple(result)
+
+
+def _title_match_key(value: str) -> str:
+    return " ".join(normalize_text(value).replace("\u200c", " ").split()).casefold()
 
 
 def _person_key(value: str) -> str:

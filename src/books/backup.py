@@ -89,5 +89,7 @@ class BackupService:
             required = {"books", "schema_migrations"}
             if not required.issubset(tables):
                 raise ValueError("backup is not a valid BOOKS database")
+        except sqlite3.DatabaseError as exc:
+            raise ValueError("invalid SQLite backup") from exc
         finally:
             conn.close()
