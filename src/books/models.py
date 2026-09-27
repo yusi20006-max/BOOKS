@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 from .normalization import normalize_isbn, normalize_text, validate_isbn10, validate_isbn13
-
 
 @dataclass(frozen=True, slots=True)
 class Book:
