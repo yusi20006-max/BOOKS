@@ -4,7 +4,7 @@ from books.models import Book
 
 def test_favorite_and_many_to_many_tags_shelves_persist(tmp_path):
     db = Database(tmp_path / "books.sqlite3")
-    assert db.migrate() == 6
+    assert db.migrate() == 7
     repository = BookRepository(db)
     book_id = repository.create_book(Book(title="کتاب"))
 
