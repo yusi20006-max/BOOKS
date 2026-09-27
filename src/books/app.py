@@ -1000,7 +1000,8 @@ def render_knowledge_base() -> None:
     from .knowledge import KnowledgeEdge, KnowledgeNode
     store = KnowledgeStore(Database(settings.db_path)); store.db.migrate()
     st.subheader("دانش شخصی، نقل‌قول و مفاهیم")
-    rows = store.search(st.text_input("جستجوی یکپارچه در یادداشت‌ها، نقل‌قول‌ها و مفاهیم", key="knowledge-search")) if st.session_state.get("knowledge-search") else []
+    query = st.text_input("جستجوی یکپارچه در یادداشت‌ها، نقل‌قول‌ها و مفاهیم", key="knowledge-search")
+    rows = store.search(query) if query else []
     if rows: st.dataframe([{"نوع":type(x).__name__,"متن":getattr(x,"text",getattr(x,"label","")),"صفحه":getattr(x,"page",None)} for x in rows],use_container_width=True)
     with st.form("knowledge-node"):
         label=st.text_input("مفهوم"); kind=st.text_input("نوع",value="concept"); save=st.form_submit_button("ثبت مفهوم")
