@@ -37,7 +37,7 @@ def test_migration_is_idempotent(tmp_path):
     with db.connect() as conn:
         assert conn.execute(
             "SELECT COUNT(*) FROM schema_migrations"
-        ).fetchone()[0] == 1
+        ).fetchone()[0] == 7
 
 
 def test_repository_crud_and_persistence(tmp_path):
