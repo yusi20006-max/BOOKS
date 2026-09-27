@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+
 import uuid
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
@@ -29,7 +30,11 @@ class Database:
         return conn
 
     def migrate(self) -> int:
-        migrations_dir = Path(__file__).resolve().parents[2] / "migrations"
+        packaged = Path(__file__).resolve().parents[2] / "migrations"
+        working_tree = Path.cwd() / "migrations"
+        migrations_dir = packaged if packaged.exists() else working_tree
+        if not migrations_dir.exists():
+            raise FileNotFoundError(f"migrations directory not found: {migrations_dir}")
         with self.connect() as conn:
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS schema_migrations (
