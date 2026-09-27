@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
-from typing import Any, Protocol, Sequence
+from dataclasses import dataclass, replace
+from typing import Any, Mapping, Protocol, Sequence
+
+from .models import Book
+from .normalization import normalize_isbn, normalize_text
 
 
 class Provider(Protocol):
@@ -36,8 +39,22 @@ class DiscoveryResponse:
     failures: tuple[ProviderFailure, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class SourceProvenance:
+    provider: str
+    source_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class MergedDiscoveryItem:
+    book: Book
+    confidence: float
+    matched_by: tuple[str, ...]
+    provenance: tuple[SourceProvenance, ...]
+
+
 class DiscoveryService:
-    """Provider-agnostic discovery orchestration with deterministic fallback behavior."""
+    """Provider-agnostic discovery orchestration and deterministic result merging."""
 
     def __init__(self, providers: Sequence[tuple[str, Provider]]) -> None:
         if not providers:
@@ -64,6 +81,78 @@ class DiscoveryService:
         if strategy == "sequential":
             return self._search_sequential(query, language, start_index, limit)
         return self._search_parallel(query, language, start_index, limit)
+
+    @staticmethod
+    def merge_results(response: DiscoveryResponse) -> tuple[MergedDiscoveryItem, ...]:
+        """Merge duplicate Book candidates while retaining provenance.
+
+        Matching is intentionally conservative:
+        * shared ISBN is a definitive match;
+        * normalized title + at least one normalized author is a strong match;
+        * identical normalized titles are merged only when both records have no authors.
+
+        A translated edition with the same title but a different translator is therefore
+        not collapsed merely because its title happens to match.
+        """
+
+        merged: list[MergedDiscoveryItem] = []
+        for result in response.results:
+            if result.error:
+                continue
+            for item in result.items:
+                if not isinstance(item, Book):
+                    continue
+
+                match_index = None
+                match_confidence = 0.0
+                match_keys: tuple[str, ...] = ()
+                for index, existing in enumerate(merged):
+                    confidence, keys = _match_confidence(existing.book, item)
+                    if confidence > match_confidence:
+                        match_index = index
+                        match_confidence = confidence
+                        match_keys = keys
+
+                provenance = _provenance(result.provider, item.source_ids)
+                if match_index is None:
+                    merged.append(
+                        MergedDiscoveryItem(
+                            book=item,
+                            confidence=match_confidence,
+                            matched_by=match_keys,
+                            provenance=provenance,
+                        )
+                    )
+                    continue
+
+                existing = merged[match_index]
+                merged[match_index] = MergedDiscoveryItem(
+                    book=_merge_books(existing.book, item),
+                    confidence=max(existing.confidence, match_confidence),
+                    matched_by=_merge_unique(existing.matched_by, match_keys),
+                    provenance=_merge_provenance(existing.provenance, provenance),
+                )
+
+        return tuple(merged)
+
+    def search_merged(
+        self,
+        query: str,
+        *,
+        language: str = "fa",
+        start_index: int = 0,
+        limit: int = 20,
+        strategy: str = "parallel",
+    ) -> tuple[MergedDiscoveryItem, ...]:
+        return self.merge_results(
+            self.search(
+                query,
+                language=language,
+                start_index=start_index,
+                limit=limit,
+                strategy=strategy,
+            )
+        )
 
     def _call(
         self,
@@ -103,7 +192,6 @@ class DiscoveryService:
             if result.error:
                 failures.append(ProviderFailure(name, result.error))
                 continue
-            # A successful provider is enough for sequential fallback.
             break
         return DiscoveryResponse(tuple(results), tuple(failures))
 
@@ -133,3 +221,90 @@ class DiscoveryService:
             if result.error
         )
         return DiscoveryResponse(tuple(results), failures)
+
+
+def _match_confidence(left: Book, right: Book) -> tuple[float, tuple[str, ...]]:
+    left_isbns = {value for value in (normalize_isbn(left.isbn10), normalize_isbn(left.isbn13)) if value}
+    right_isbns = {value for value in (normalize_isbn(right.isbn10), normalize_isbn(right.isbn13)) if value}
+    if left_isbns & right_isbns:
+        return 1.0, ("isbn",)
+
+    left_title = normalize_text(left.title)
+    right_title = normalize_text(right.title)
+    if left_title != right_title:
+        return 0.0, ()
+
+    left_authors = {_person_key(value) for value in left.authors if _person_key(value)}
+    right_authors = {_person_key(value) for value in right.authors if _person_key(value)}
+    if left_authors and right_authors and left_authors & right_authors:
+        return 0.95, ("title", "author")
+    if not left_authors and not right_authors:
+        return 0.80, ("title",)
+    return 0.0, ()
+
+
+def _merge_books(primary: Book, secondary: Book) -> Book:
+    source_ids = dict(primary.source_ids)
+    for provider, source_id in secondary.source_ids.items():
+        source_ids.setdefault(provider, source_id)
+
+    return replace(
+        primary,
+        original_title=primary.original_title or secondary.original_title,
+        authors=_merge_values(primary.authors, secondary.authors),
+        translators=_merge_values(primary.translators, secondary.translators),
+        publisher=primary.publisher or secondary.publisher,
+        pages=primary.pages if primary.pages is not None else secondary.pages,
+        publication_year=(
+            primary.publication_year
+            if primary.publication_year is not None
+            else secondary.publication_year
+        ),
+        isbn10=primary.isbn10 or secondary.isbn10,
+        isbn13=primary.isbn13 or secondary.isbn13,
+        language=primary.language or secondary.language,
+        genres=_merge_values(primary.genres, secondary.genres),
+        subjects=_merge_values(primary.subjects, secondary.subjects),
+        summary=primary.summary or secondary.summary,
+        cover_url=primary.cover_url or secondary.cover_url,
+        source_ids=source_ids,
+    )
+
+
+def _merge_values(left: Sequence[str], right: Sequence[str]) -> tuple[str, ...]:
+    values: list[str] = []
+    seen: set[str] = set()
+    for value in (*left, *right):
+        cleaned = normalize_text(value)
+        key = cleaned.casefold()
+        if cleaned and key not in seen:
+            seen.add(key)
+            values.append(cleaned)
+    return tuple(values)
+
+
+def _merge_unique(left: Sequence[str], right: Sequence[str]) -> tuple[str, ...]:
+    return _merge_values(left, right)
+
+
+def _provenance(provider: str, source_ids: Mapping[str, str]) -> tuple[SourceProvenance, ...]:
+    source_id = source_ids.get(provider)
+    return (SourceProvenance(provider=provider, source_id=source_id),)
+
+
+def _merge_provenance(
+    left: Sequence[SourceProvenance],
+    right: Sequence[SourceProvenance],
+) -> tuple[SourceProvenance, ...]:
+    result = list(left)
+    seen = {(item.provider, item.source_id) for item in result}
+    for item in right:
+        key = (item.provider, item.source_id)
+        if key not in seen:
+            seen.add(key)
+            result.append(item)
+    return tuple(result)
+
+
+def _person_key(value: str) -> str:
+    return normalize_text(value).casefold()
