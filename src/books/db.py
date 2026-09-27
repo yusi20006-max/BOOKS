@@ -357,6 +357,38 @@ class BookRepository:
             )
             return progress
 
+    def get_personal_data(self, book_id: str) -> sqlite3.Row | None:
+        with self.db.connect() as conn:
+            return conn.execute(
+                "SELECT * FROM book_personal WHERE book_id = ?",
+                (book_id,),
+            ).fetchone()
+
+    def update_personal_data(
+        self,
+        book_id: str,
+        *,
+        rating: int | None,
+        note: str,
+        quote: str,
+    ) -> None:
+        if rating is not None and not 1 <= rating <= 5:
+            raise ValueError("rating must be between 1 and 5")
+        with transaction(self.db) as conn:
+            if conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone() is None:
+                raise ValueError("book not found")
+            timestamp = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                """INSERT INTO book_personal(book_id, rating, note, quote, updated_at)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(book_id) DO UPDATE SET
+                       rating = excluded.rating,
+                       note = excluded.note,
+                       quote = excluded.quote,
+                       updated_at = excluded.updated_at""",
+                (book_id, rating, note.strip(), quote.strip(), timestamp),
+            )
+
     def find_duplicates(self, book: Book, exclude_id: str | None = None) -> list[sqlite3.Row]:
         candidates: list[sqlite3.Row] = []
         with self.db.connect() as conn:
