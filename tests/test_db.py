@@ -32,7 +32,7 @@ def book(book_id="b1"):
 
 def test_migration_is_idempotent(tmp_path):
     db = Database(tmp_path / "books.sqlite3")
-    assert db.migrate() == 7
+    assert db.migrate() == 8
     assert db.migrate() == 0
     with db.connect() as conn:
         assert conn.execute(
