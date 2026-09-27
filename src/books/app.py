@@ -9,6 +9,7 @@ from .config import load_settings
 from .db import BookRepository, Database
 from .enrichment import MetadataEnricher
 from .transfer import BookTransferService
+from .backup import BackupService
 from .models import Book
 from .discovery import DiscoveryService, MergedDiscoveryItem
 from .providers.google_books import GoogleBooksProvider
@@ -23,6 +24,7 @@ PAGES = {
     "حذف کتاب": "حذف امن کتاب و بررسی Duplicate",
     "برچسب و قفسه": "علاقه‌مندی، برچسب و قفسه‌های شخصی",
     "انتقال داده": "Import و Export امن کتابخانه",
+    "پشتیبان‌گیری": "Backup و Restore امن SQLite",
     "مطالعه": "پیگیری وضعیت و پیشرفت مطالعه",
     "یادداشت‌ها": "یادداشت‌ها و نقل‌قول‌های شخصی",
     "تنظیمات": "تنظیمات برنامه و داده‌ها",
@@ -461,6 +463,49 @@ def render_organization() -> None:
 
 
 
+def render_backup() -> None:
+    settings = load_settings()
+    backup = BackupService(settings.db_path)
+
+    st.subheader("Backup")
+    if st.button("ساخت Backup", type="primary"):
+        try:
+            data = backup.create_backup_bytes()
+        except (FileNotFoundError, ValueError) as exc:
+            st.error(str(exc))
+        else:
+            st.download_button(
+                "دریافت فایل Backup",
+                data=data,
+                file_name=backup.backup_filename(),
+                mime="application/x-sqlite3",
+            )
+            st.success("Backup با integrity check موفق ساخته شد.")
+
+    st.subheader("Restore")
+    uploaded = st.file_uploader(
+        "فایل SQLite Backup را انتخاب کنید",
+        type=("sqlite3", "db"),
+        accept_multiple_files=False,
+    )
+    overwrite = st.checkbox(
+        "تأیید می‌کنم Database فعلی با Backup جایگزین شود.",
+        value=False,
+    )
+    if uploaded is not None and st.button(
+        "Restore",
+        type="primary",
+        disabled=not overwrite,
+    ):
+        try:
+            backup.restore_bytes(uploaded.getvalue(), overwrite=True)
+        except (ValueError, OSError) as exc:
+            st.error(f"Restore ناموفق بود: {exc}")
+        else:
+            st.success("Restore با موفقیت انجام شد. برای بارگذاری دوباره داده‌ها برنامه را Refresh کنید.")
+
+
+
 def render_transfer() -> None:
     settings = load_settings()
     repository = BookRepository(Database(settings.db_path))
@@ -830,6 +875,8 @@ def render_page(page: str) -> None:
         render_organization()
     elif page == "انتقال داده":
         render_transfer()
+    elif page == "پشتیبان‌گیری":
+        render_backup()
     else:
         settings = load_settings()
         st.info("تنظیمات برنامه در Issueهای مرتبط تکمیل می‌شود.")
