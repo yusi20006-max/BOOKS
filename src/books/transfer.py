@@ -141,11 +141,45 @@ class BookTransferService:
         books = data.get("books")
         if not isinstance(books, list):
             raise ValueError("JSON books must be a list")
+        personal = {
+            row["book_id"]: row
+            for row in data.get("book_personal", [])
+            if isinstance(row, dict) and row.get("book_id")
+        }
+        tags = {
+            row["id"]: row["name"]
+            for row in data.get("tags", [])
+            if isinstance(row, dict) and row.get("id") and row.get("name")
+        }
+        shelves = {
+            row["id"]: row["name"]
+            for row in data.get("shelves", [])
+            if isinstance(row, dict) and row.get("id") and row.get("name")
+        }
+        tag_map: dict[str, list[str]] = {}
+        shelf_map: dict[str, list[str]] = {}
+        for relation in data.get("book_tags", []):
+            if isinstance(relation, dict) and relation.get("book_id") in personal and relation.get("tag_id") in tags:
+                tag_map.setdefault(relation["book_id"], []).append(tags[relation["tag_id"]])
+        for relation in data.get("book_shelves", []):
+            if isinstance(relation, dict) and relation.get("book_id") in personal and relation.get("shelf_id") in shelves:
+                shelf_map.setdefault(relation["book_id"], []).append(shelves[relation["shelf_id"]])
+
         imported = 0
         for row in books:
             if not isinstance(row, dict):
                 raise ValueError("invalid book row")
-            imported += self._import_book_row(row)
+            enriched = dict(row)
+            p = personal.get(str(row.get("id")), {})
+            enriched.update(
+                rating=p.get("rating"),
+                note=p.get("note"),
+                quote=p.get("quote"),
+                favorite=p.get("favorite", 0),
+                tags=tag_map.get(str(row.get("id")), ()),
+                shelves=shelf_map.get(str(row.get("id")), ()),
+            )
+            imported += self._import_book_row(enriched)
         return imported
 
     def _import_book_row(self, row: dict[str, Any]) -> int:
@@ -176,8 +210,7 @@ class BookTransferService:
         if self.repository.find_duplicates(book):
             return 0
 
-        self.repository.create_book(book, str(row.get("id")) if row.get("id") else None)
-        book_id = str(row.get("id")) if row.get("id") else self.repository.find_duplicates(book)[0]["id"]
+        book_id = self.repository.create_book(book, str(row.get("id")) if row.get("id") else None)
         if row.get("reading_status"):
             self.repository.update_reading_status(book_id, str(row["reading_status"]))
         if row.get("reading_current_page") not in (None, ""):
@@ -206,6 +239,17 @@ class BookTransferService:
         if tags or shelves:
             self.repository.set_organization(book_id, tags=tags, shelves=shelves)
         return 1
+
+    def _book_row_from_csv(self, row: dict[str, str]) -> dict[str, Any]:
+        result = dict(row)
+        for field in ("authors", "translators", "genres", "subjects", "tags", "shelves"):
+            result[field] = tuple(
+                item.strip()
+                for item in (row.get(field) or "").split("|")
+                if item.strip()
+            )
+        result["source_ids"] = row.get("source_ids") or "{}"
+        return result
 
     @staticmethod
     def _tuple_value(value: Any) -> tuple[str, ...]:
