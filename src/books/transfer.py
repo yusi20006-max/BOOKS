@@ -161,10 +161,10 @@ class BookTransferService:
         tag_map: dict[str, list[str]] = {}
         shelf_map: dict[str, list[str]] = {}
         for relation in data.get("book_tags", []):
-            if isinstance(relation, dict) and relation.get("book_id") in personal and relation.get("tag_id") in tags:
+            if isinstance(relation, dict) and relation.get("book_id") and relation.get("tag_id") in tags:
                 tag_map.setdefault(relation["book_id"], []).append(tags[relation["tag_id"]])
         for relation in data.get("book_shelves", []):
-            if isinstance(relation, dict) and relation.get("book_id") in personal and relation.get("shelf_id") in shelves:
+            if isinstance(relation, dict) and relation.get("book_id") and relation.get("shelf_id") in shelves:
                 shelf_map.setdefault(relation["book_id"], []).append(shelves[relation["shelf_id"]])
 
         imported = 0
