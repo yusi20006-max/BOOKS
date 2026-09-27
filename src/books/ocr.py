@@ -1,6 +1,6 @@
+import re
 from dataclasses import dataclass
 
-import re
 from .normalization import normalize_isbn, normalize_text
 
 @dataclass(frozen=True, slots=True)
