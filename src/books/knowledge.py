@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from .normalization import normalize_text
 
+
 @dataclass(frozen=True, slots=True)
 class Quote:
     id: str; book_id: str; text: str; page: int|None=None; source: str|None=None
