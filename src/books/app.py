@@ -257,6 +257,17 @@ def _render_save_action(book) -> None:
         st.session_state["saved_book_id"] = book_id
         st.success("کتاب با موفقیت در SQLite ذخیره شد.")
 
+def library_row_summary(row) -> dict[str, str]:
+    authors = "، ".join(json.loads(row["authors_json"] or "[]")) or "—"
+    return {
+        "title": row["title"],
+        "authors": authors,
+        "publisher": row["publisher"] or "—",
+        "year": str(row["publication_year"]) if row["publication_year"] else "—",
+        "isbn": row["isbn13"] or row["isbn10"] or "—",
+    }
+
+
 def render_library() -> None:
     settings = load_settings()
     repository = BookRepository(Database(settings.db_path))
@@ -284,12 +295,12 @@ def render_library() -> None:
                         st.image(row["cover_url"], use_container_width=True)
                 with cols[1]:
                     st.subheader(row["title"])
-                    authors = "، ".join(json.loads(row["authors_json"] or "[]")) or "—"
-                    st.write(f"**نویسنده:** {authors}")
-                    st.write(f"**ناشر:** {row['publisher'] or '—'}")
+                    summary = library_row_summary(row)
+                    st.write(f"**نویسنده:** {summary['authors']}")
+                    st.write(f"**ناشر:** {summary['publisher']}")
                     st.write(
-                        f"**سال:** {row['publication_year'] or '—'} · "
-                        f"**ISBN:** {row['isbn13'] or row['isbn10'] or '—'}"
+                        f"**سال:** {summary['year']} · "
+                        f"**ISBN:** {summary['isbn']}"
                     )
                     st.caption("وضعیت مطالعه در Phase Reading Management تکمیل می‌شود.")
     else:
@@ -300,9 +311,9 @@ def render_library() -> None:
                     if row["cover_url"]:
                         st.image(row["cover_url"], use_container_width=True)
                     st.subheader(row["title"])
-                    authors = "، ".join(json.loads(row["authors_json"] or "[]")) or "—"
-                    st.write(authors)
-                    st.caption(f"ISBN: {row['isbn13'] or row['isbn10'] or '—'}")
+                    summary = library_row_summary(row)
+                    st.write(summary["authors"])
+                    st.caption(f"ISBN: {summary['isbn']}")
                     st.caption("وضعیت مطالعه: در فاز بعد")
 
 def render_discovery() -> None:
