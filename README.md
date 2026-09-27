@@ -8,6 +8,6 @@ Run `python -m books.runtime --host 127.0.0.1 --port 8080 --db books.sqlite3`. C
 
 ## Release policy
 
-Version `1.0.0` is defined once in `src/books/__init__.py` and exposed to packaging through setuptools dynamic metadata. Core runtime dependencies are installed by the base package; optional integrations such as encrypted backup require their documented extra dependency and fail explicitly when unavailable.
+Version `1.0.0` is defined once in `src/books/__init__.py` and exposed to packaging through setuptools dynamic metadata. Core runtime dependencies are installed by the base package. Barcode decoding is an optional integration: install `books[barcode]` to enable the ZXing C++ decoder. The scanner also supports injected decoders without that dependency and reports an actionable error when the default decoder is unavailable.
 
 A release is accepted only when clean-database migration, existing-database migration idempotency, REST/MCP runtime, offline smoke, full pytest, lint, Docker build, and the clean wheel-install/package runtime gate are green in CI. Release tags are created only from the verified main commit after that gate passes.
