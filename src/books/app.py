@@ -11,6 +11,7 @@ from .providers.open_library import OpenLibraryProvider
 PAGES = {
     "کتابخانه": "نمایش و مدیریت کتاب‌های ذخیره‌شده",
     "افزودن کتاب": "جستجو و انتخاب کتاب از منابع مختلف",
+    "تأیید و ویرایش": "اصلاح و اعتبارسنجی اطلاعات قبل از ذخیره",
     "مطالعه": "پیگیری وضعیت و پیشرفت مطالعه",
     "یادداشت‌ها": "یادداشت‌ها و نقل‌قول‌های شخصی",
     "تنظیمات": "تنظیمات برنامه و داده‌ها",
@@ -92,6 +93,136 @@ def render_candidate(candidate: MergedDiscoveryItem, index: int) -> None:
             st.success("این نتیجه انتخاب شد؛ مرحله تأیید و ویرایش در Issue بعدی انجام می‌شود.")
 
 
+
+
+def _split_lines(value: str) -> tuple[str, ...]:
+    return tuple(item.strip() for item in value.splitlines() if item.strip())
+
+
+def build_edited_book(
+    *,
+    title: str,
+    original_title: str,
+    authors: str,
+    translators: str,
+    publisher: str,
+    pages: int | None,
+    publication_year: int | None,
+    isbn10: str,
+    isbn13: str,
+    language: str,
+    genres: str,
+    subjects: str,
+    summary: str,
+    cover_url: str,
+    source_ids: dict[str, str],
+):
+    from .models import Book
+
+    return Book(
+        title=title,
+        original_title=original_title or None,
+        authors=_split_lines(authors),
+        translators=_split_lines(translators),
+        publisher=publisher or None,
+        pages=pages,
+        publication_year=publication_year,
+        isbn10=isbn10 or None,
+        isbn13=isbn13 or None,
+        language=language or None,
+        genres=_split_lines(genres),
+        subjects=_split_lines(subjects),
+        summary=summary or None,
+        cover_url=cover_url or None,
+        source_ids=source_ids,
+    )
+
+
+def render_confirm_edit() -> None:
+    candidate = st.session_state.get("selected_candidate")
+    if candidate is None:
+        st.info("ابتدا یک نتیجه را از جستجوی کتاب انتخاب کنید.")
+        return
+
+    book = candidate.book
+    st.subheader("تأیید و ویرایش اطلاعات")
+    st.caption("اطلاعات منبع قابل اصلاح است. ذخیره نهایی در مرحله بعد انجام می‌شود.")
+
+    with st.form("confirm-edit-book"):
+        title = st.text_input("عنوان", value=book.title)
+        original_title = st.text_input("عنوان اصلی", value=book.original_title or "")
+        authors = st.text_area("نویسندگان — هر نفر در یک خط", value="\n".join(book.authors))
+        translators = st.text_area("مترجمان — هر نفر در یک خط", value="\n".join(book.translators))
+        publisher = st.text_input("ناشر", value=book.publisher or "")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            pages = st.number_input(
+                "تعداد صفحات",
+                min_value=0,
+                value=book.pages or 0,
+                step=1,
+            )
+        with col2:
+            publication_year = st.number_input(
+                "سال انتشار",
+                min_value=1,
+                max_value=9999,
+                value=book.publication_year or 1400,
+                step=1,
+            )
+
+        isbn10 = st.text_input("ISBN-10", value=book.isbn10 or "")
+        isbn13 = st.text_input("ISBN-13", value=book.isbn13 or "")
+        language = st.text_input("زبان", value=book.language or "")
+        genres = st.text_area("ژانرها — هر مورد در یک خط", value="\n".join(book.genres))
+        subjects = st.text_area("موضوعات — هر مورد در یک خط", value="\n".join(book.subjects))
+        summary = st.text_area("خلاصه", value=book.summary or "")
+        cover_url = st.text_input("نشانی جلد", value=book.cover_url or "")
+
+        submitted = st.form_submit_button("اعتبارسنجی و پیش‌نمایش", type="primary")
+
+    if not submitted:
+        return
+
+    try:
+        edited = build_edited_book(
+            title=title,
+            original_title=original_title,
+            authors=authors,
+            translators=translators,
+            publisher=publisher,
+            pages=int(pages),
+            publication_year=int(publication_year),
+            isbn10=isbn10,
+            isbn13=isbn13,
+            language=language,
+            genres=genres,
+            subjects=subjects,
+            summary=summary,
+            cover_url=cover_url,
+            source_ids=dict(book.source_ids),
+        )
+    except (TypeError, ValueError) as exc:
+        st.error(f"اطلاعات واردشده معتبر نیست: {exc}")
+        return
+
+    st.session_state["edited_candidate"] = edited
+    st.success("اطلاعات معتبر است و پیش‌نمایش آماده شد.")
+    with st.container(border=True):
+        st.subheader(edited.title)
+        st.write(f"**نویسنده:** {'، '.join(edited.authors) or '—'}")
+        st.write(f"**مترجم:** {'، '.join(edited.translators) or '—'}")
+        st.write(f"**ناشر:** {edited.publisher or '—'}")
+        st.write(f"**ISBN:** {edited.isbn13 or edited.isbn10 or '—'}")
+        st.write(f"**صفحات:** {edited.pages or '—'}")
+        st.write(f"**سال انتشار:** {edited.publication_year or '—'}")
+        st.write(f"**زبان:** {edited.language or '—'}")
+        st.write(f"**ژانر:** {'، '.join(edited.genres) or '—'}")
+        st.write(f"**موضوع:** {'، '.join(edited.subjects) or '—'}")
+        st.write(f"**خلاصه:** {edited.summary or '—'}")
+
+
 def render_discovery() -> None:
     settings = load_settings()
     query = st.text_input("عنوان، نویسنده یا ISBN", placeholder="مثلاً شازده کوچولو")
@@ -128,6 +259,8 @@ def render_page(page: str) -> None:
         st.info("کتاب‌های شما در این بخش نمایش داده می‌شوند.")
     elif page == "افزودن کتاب":
         render_discovery()
+    elif page == "تأیید و ویرایش":
+        render_confirm_edit()
     elif page == "مطالعه":
         st.info("مدیریت مطالعه در Phaseهای Reading Management تکمیل می‌شود.")
     elif page == "یادداشت‌ها":
