@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Any, Mapping, Protocol, Sequence
+from typing import Any, Protocol
 
 from .models import Book
 from .normalization import normalize_isbn, normalize_text
@@ -175,7 +176,7 @@ class DiscoveryService:
                 items=tuple(page.items),
                 total_items=int(page.total_items),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return DiscoveryResult(
                 provider=name,
                 items=(),
