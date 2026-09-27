@@ -1,5 +1,6 @@
 from books.catalog import Work,Edition,Translation,Copy
 
+
 def test_work_edition_translation_copy_are_distinct():
     w=Work("w1","شازده کوچولو")
     e=Edition("e1",w.id,"ناشر")
