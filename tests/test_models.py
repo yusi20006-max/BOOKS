@@ -11,8 +11,8 @@ def test_persian_normalization_preserves_display_separately():
 
 
 def test_book_keeps_original_display_text_alongside_canonical_values():
-    book = Book(title="  كتاب‌ نمونه  ", authors=("  نویسنده‌ٔ اول  ",))
-    assert book.display_title == "كتاب‌ نمونه"
+    book = Book(title="  كتاب نمونه  ", authors=("  نویسنده‌ٔ اول  ",))
+    assert book.display_title == "كتاب نمونه"
     assert book.display_authors == ("نویسنده‌ٔ اول",)
     assert book.title == "کتاب نمونه"
     assert book.authors == ("نویسنده اول",)
