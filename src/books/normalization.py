@@ -29,8 +29,8 @@ def normalize_text(value: str | None) -> str:
 def normalize_isbn(value: str | None) -> str | None:
     if value is None:
         return None
-    value = value.translate(_ARABIC_TO_ASCII)
-    compact = re.sub(r"[\s-]+", "", value).upper()
+    value = unicodedata.normalize("NFKC", value).translate(_ARABIC_TO_ASCII).replace("\u200c", "")
+    compact = re.sub(r"[\s\-‐‑‒–—―]+", "", value).upper()
     return compact or None
 
 
