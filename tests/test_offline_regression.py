@@ -26,7 +26,7 @@ class OfflineProvider:
 
 def test_full_offline_core_contract(tmp_path):
     db = Database(tmp_path / "books.sqlite3")
-    assert db.migrate() == 8
+    assert db.migrate() == 10
     assert db.migrate() == 0
 
     repository = BookRepository(db)

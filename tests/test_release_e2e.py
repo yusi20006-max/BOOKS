@@ -10,7 +10,7 @@ from books.runtime import create_server
 def test_clean_and_existing_database_e2e(tmp_path):
     path = tmp_path / "books.sqlite3"
     db = Database(path)
-    assert db.migrate() == 8
+    assert db.migrate() == 10
     assert db.migrate() == 0
     repository = BookRepository(db)
     repository.create_book(Book(title="آزمون انتشار", authors=("نویسنده",)))

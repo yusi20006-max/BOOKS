@@ -32,6 +32,7 @@ PAGES = {
     "یادداشت‌ها": "یادداشت‌ها و نقل‌قول‌های شخصی",
     "جلسات مطالعه": "ثبت جلسات مطالعه در SQLite",
     "کتاب‌های صوتی": "پخش و ثبت پیشرفت کتاب صوتی",
+    "حاشیه‌نویسی دیجیتال": "نشانک، هایلایت و یادداشت در کتاب دیجیتال",
     "قرض‌ها": "مدیریت نسخه‌های فیزیکی و امانت",
     "اسکن و OCR": "اسکن متن و اصلاح قبل از ذخیره",
     "گزارش‌ها": "گزارش موجودی و مطالعه",
@@ -919,6 +920,36 @@ def render_discovery() -> None:
 
 
 
+
+def render_annotations() -> None:
+    settings = load_settings()
+    repository = BookRepository(Database(settings.db_path))
+    repository.db.migrate()
+    rows = repository.list(limit=1000)
+    if not rows:
+        st.info("ابتدا یک کتاب به کتابخانه اضافه کنید.")
+        return
+    labels = {row["id"]: row["title"] for row in rows}
+    book_id = st.selectbox("کتاب", list(labels), format_func=lambda value: labels[value], key="annotation-book")
+    st.subheader("حاشیه‌نویسی دیجیتال")
+    with st.form("annotation-form"):
+        kind = st.selectbox("نوع", ("bookmark", "highlight", "note"), format_func=lambda x: {"bookmark":"نشانک","highlight":"هایلایت","note":"یادداشت"}[x])
+        locator = st.text_input("مکان در فایل", placeholder="صفحه ۱۲ یا فصل ۳")
+        text = st.text_area("متن انتخاب‌شده")
+        note = st.text_area("یادداشت تکمیلی")
+        save = st.form_submit_button("ذخیره", type="primary")
+    if save:
+        from uuid import uuid4
+        try:
+            repository.add_annotation(str(uuid4()), book_id, kind, locator, text or None, note or None)
+        except ValueError as exc:
+            st.error(str(exc))
+        else:
+            st.success("حاشیه‌نویسی ذخیره شد.")
+    annotations = repository.list_annotations(book_id)
+    st.dataframe([dict(row) for row in annotations], use_container_width=True)
+
+
 def render_reading_sessions() -> None:
     settings = load_settings()
     repository = BookRepository(Database(settings.db_path))
@@ -1097,6 +1128,8 @@ def render_page(page: str) -> None:
         render_reading_sessions()
     elif page == "کتاب‌های صوتی":
         render_audiobooks()
+    elif page == "حاشیه‌نویسی دیجیتال":
+        render_annotations()
     elif page == "قرض‌ها":
         render_loans()
     elif page == "اسکن و OCR":
