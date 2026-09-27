@@ -1,5 +1,4 @@
 from datetime import date
-import pytest
 from books.reports import *
 
 def test_range_analytics_and_inventory():
