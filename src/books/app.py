@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 
 import streamlit as st
@@ -256,6 +257,65 @@ def _render_save_action(book) -> None:
         st.session_state["saved_book_id"] = book_id
         st.success("کتاب با موفقیت در SQLite ذخیره شد.")
 
+def library_row_summary(row) -> dict[str, str]:
+    authors = "، ".join(json.loads(row["authors_json"] or "[]")) or "—"
+    return {
+        "title": row["title"],
+        "authors": authors,
+        "publisher": row["publisher"] or "—",
+        "year": str(row["publication_year"]) if row["publication_year"] else "—",
+        "isbn": row["isbn13"] or row["isbn10"] or "—",
+    }
+
+
+def render_library() -> None:
+    settings = load_settings()
+    repository = BookRepository(Database(settings.db_path))
+    repository.db.migrate()
+    rows = repository.list(limit=100)
+
+    if not rows:
+        st.info("کتابخانه هنوز خالی است. از بخش «افزودن کتاب» یک کتاب انتخاب و ذخیره کنید.")
+        return
+
+    view = st.radio(
+        "نحوه نمایش",
+        ("شبکه‌ای", "فهرستی"),
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+    st.subheader(f"{len(rows)} کتاب")
+
+    if view == "فهرستی":
+        for row in rows:
+            with st.container(border=True):
+                cols = st.columns([1, 5])
+                with cols[0]:
+                    if row["cover_url"]:
+                        st.image(row["cover_url"], use_container_width=True)
+                with cols[1]:
+                    st.subheader(row["title"])
+                    summary = library_row_summary(row)
+                    st.write(f"**نویسنده:** {summary['authors']}")
+                    st.write(f"**ناشر:** {summary['publisher']}")
+                    st.write(
+                        f"**سال:** {summary['year']} · "
+                        f"**ISBN:** {summary['isbn']}"
+                    )
+                    st.caption("وضعیت مطالعه در Phase Reading Management تکمیل می‌شود.")
+    else:
+        columns = st.columns(3)
+        for index, row in enumerate(rows):
+            with columns[index % 3]:
+                with st.container(border=True):
+                    if row["cover_url"]:
+                        st.image(row["cover_url"], use_container_width=True)
+                    st.subheader(row["title"])
+                    summary = library_row_summary(row)
+                    st.write(summary["authors"])
+                    st.caption(f"ISBN: {summary['isbn']}")
+                    st.caption("وضعیت مطالعه: در فاز بعد")
+
 def render_discovery() -> None:
     settings = load_settings()
     query = st.text_input("عنوان، نویسنده یا ISBN", placeholder="مثلاً شازده کوچولو")
@@ -289,7 +349,7 @@ def render_page(page: str) -> None:
     st.caption(PAGES[page])
 
     if page == "کتابخانه":
-        st.info("کتاب‌های شما در این بخش نمایش داده می‌شوند.")
+        render_library()
     elif page == "افزودن کتاب":
         render_discovery()
     elif page == "تأیید و ویرایش":
