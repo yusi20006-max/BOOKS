@@ -51,7 +51,7 @@ jobs:
         env:
                     BOOKS_DB_PATH: ${{ runner.temp }}/books.sqlite3
         run: |
-          python -c "from books.config import load_settings; from books.db import Database; s=load_settings(); assert Database(s.db_path).migrate() == 7"
+          python -c "from books.config import load_settings; from books.db import Database; s=load_settings(); assert Database(s.db_path).migrate() == 8"
           python -m books.health
 
   docker:
