@@ -1,6 +1,8 @@
 from __future__ import annotations
-import os,re
+import os
+import re
 from dataclasses import dataclass
+
 
 _SECRET_PATTERNS=(re.compile(r"(?i)(token|secret|password|api[_-]?key)(\\s*[=:]\\s*)[^\\s,]+"),)
 def redact_secrets(text:str)->str:
