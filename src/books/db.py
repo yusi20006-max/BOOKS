@@ -284,6 +284,44 @@ class BookRepository:
                 (*params, limit, offset),
             ).fetchall()
 
+    def find_duplicates(self, book: Book, exclude_id: str | None = None) -> list[sqlite3.Row]:
+        candidates: list[sqlite3.Row] = []
+        with self.db.connect() as conn:
+            if book.isbn10 or book.isbn13:
+                clauses = []
+                params: list[str] = []
+                if book.isbn10:
+                    clauses.append("isbn10 = ?")
+                    params.append(book.isbn10)
+                if book.isbn13:
+                    clauses.append("isbn13 = ?")
+                    params.append(book.isbn13)
+                where = " OR ".join(clauses)
+                rows = conn.execute(f"SELECT * FROM books WHERE {where}", params).fetchall()
+                candidates.extend(rows)
+
+            title = normalize_text(book.title)
+            if title:
+                rows = conn.execute(
+                    "SELECT * FROM books WHERE title = ?",
+                    (title,),
+                ).fetchall()
+                author_keys = {normalize_text(author).casefold() for author in book.authors}
+                for row in rows:
+                    row_authors = {
+                        normalize_text(author).casefold()
+                        for author in json.loads(row["authors_json"] or "[]")
+                    }
+                    if not author_keys or not row_authors or author_keys & row_authors:
+                        candidates.append(row)
+
+        unique: dict[str, sqlite3.Row] = {}
+        for row in candidates:
+            if exclude_id is not None and row["id"] == exclude_id:
+                continue
+            unique[row["id"]] = row
+        return list(unique.values())
+
     def delete(self, book_id: str) -> bool:
         with transaction(self.db) as conn:
             result = conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
