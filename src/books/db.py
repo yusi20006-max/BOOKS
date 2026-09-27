@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Iterator, Mapping, Any
 
 from .models import Book
+from .normalization import normalize_text
 
 
 class Database:
@@ -156,6 +157,37 @@ class BookRepository:
             return conn.execute(
                 "SELECT * FROM books ORDER BY updated_at DESC, id LIMIT ? OFFSET ?",
                 (limit, offset),
+            ).fetchall()
+
+    def search(self, query: str, limit: int = 100, offset: int = 0) -> list[sqlite3.Row]:
+        normalized = normalize_text(query)
+        if not normalized:
+            raise ValueError("query must not be empty")
+        if limit < 1 or limit > 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        if offset < 0:
+            raise ValueError("offset must be non-negative")
+
+        pattern = f"%{normalized}%"
+        spaced_pattern = f"%{normalized.replace(chr(8204), " ")}%"
+        columns = (
+            "title", "original_title", "authors_json", "translators_json",
+            "publisher", "isbn10", "isbn13",
+        )
+        clauses = []
+        params: list[str] = []
+        for column in columns:
+            expression = f"REPLACE({column}, char(8204), ' ')"
+            clauses.append(f"{expression} LIKE ?")
+            params.append(spaced_pattern)
+            clauses.append(f"{column} LIKE ?")
+            params.append(pattern)
+
+        with self.db.connect() as conn:
+            return conn.execute(
+                f"SELECT * FROM books WHERE {" OR ".join(clauses)} "
+                "ORDER BY updated_at DESC, id LIMIT ? OFFSET ?",
+                (*params, limit, offset),
             ).fetchall()
 
     def delete(self, book_id: str) -> bool:
