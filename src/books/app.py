@@ -6,16 +6,16 @@ import sqlite3
 import streamlit as st
 from PIL import Image
 
+from .backup import BackupService
 from .config import load_settings
 from .db import BookRepository, Database
-from .enrichment import MetadataEnricher
-from .transfer import BookTransferService
-from .backup import BackupService
-from .scanner import BarcodeScanner
-from .models import Book
 from .discovery import DiscoveryService, MergedDiscoveryItem
+from .enrichment import MetadataEnricher
+from .models import Book
 from .providers.google_books import GoogleBooksProvider
 from .providers.open_library import OpenLibraryProvider
+from .scanner import BarcodeScanner
+from .transfer import BookTransferService
 
 
 PAGES = {
@@ -849,8 +849,7 @@ def render_library() -> None:
     else:
         columns = st.columns(3)
         for index, row in enumerate(rows):
-            with columns[index % 3]:
-                with st.container(border=True):
+            with columns[index % 3], st.container(border=True):
                     if row["cover_url"]:
                         st.image(row["cover_url"], use_container_width=True)
                     st.subheader(row["title"])
@@ -868,7 +867,7 @@ def render_discovery() -> None:
         try:
             image = Image.open(camera)
             result = BarcodeScanner().scan(image)
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             st.error(f"خواندن تصویر ناموفق بود: {exc}")
         else:
             if result.isbn:
