@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 from .db import BookRepository
 
+
 @dataclass(frozen=True, slots=True)
 class Tool:
     name: str; handler: Callable[...,Any]; write: bool=False
