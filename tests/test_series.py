@@ -1,6 +1,7 @@
 import pytest
 from books.series import Series, Volume
 
+
 def test_series_and_volume_are_persian_first():
     s=Series("s1","  مجموعه  بنیاد  "," توضیح ")
     v=Volume("v1","s1","e1",1," جلد اول ")
