@@ -19,6 +19,7 @@ PAGES = {
     "تأیید و ویرایش": "اصلاح و اعتبارسنجی اطلاعات قبل از ذخیره",
     "ویرایش کتاب": "ویرایش کتاب‌های ذخیره‌شده",
     "حذف کتاب": "حذف امن کتاب و بررسی Duplicate",
+    "برچسب و قفسه": "علاقه‌مندی، برچسب و قفسه‌های شخصی",
     "مطالعه": "پیگیری وضعیت و پیشرفت مطالعه",
     "یادداشت‌ها": "یادداشت‌ها و نقل‌قول‌های شخصی",
     "تنظیمات": "تنظیمات برنامه و داده‌ها",
@@ -371,6 +372,9 @@ def render_personal_data() -> None:
     current_rating = personal["rating"] if personal else None
     current_note = personal["note"] if personal else ""
     current_quote = personal["quote"] if personal else ""
+    current_favorite = bool(personal["favorite"]) if personal else False
+
+    favorite = st.checkbox("⭐ مورد علاقه", value=current_favorite)
 
     rating_options = [None, 1, 2, 3, 4, 5]
     rating = st.selectbox(
@@ -390,10 +394,46 @@ def render_personal_data() -> None:
                 note=note,
                 quote=quote,
             )
+            repository.update_favorite(selected_id, favorite)
         except ValueError as exc:
             st.error(str(exc))
         else:
             st.success("امتیاز و اطلاعات شخصی ذخیره شد.")
+
+
+
+def render_organization() -> None:
+    settings = load_settings()
+    repository = BookRepository(Database(settings.db_path))
+    repository.db.migrate()
+    rows = repository.list(limit=1000)
+    if not rows:
+        st.info("کتابی برای سازمان‌دهی وجود ندارد.")
+        return
+
+    labels = {row["id"]: row["title"] for row in rows}
+    selected_id = st.selectbox(
+        "کتاب",
+        list(labels),
+        format_func=lambda book_id: labels[book_id],
+    )
+    current_tags, current_shelves = repository.get_organization(selected_id)
+    tags = st.text_area(
+        "برچسب‌ها — هر برچسب در یک خط",
+        value="\n".join(current_tags),
+    )
+    shelves = st.text_area(
+        "قفسه‌ها — هر قفسه در یک خط",
+        value="\n".join(current_shelves),
+    )
+
+    if st.button("ذخیره برچسب و قفسه", type="primary"):
+        repository.set_organization(
+            selected_id,
+            tags=tuple(tags.splitlines()),
+            shelves=tuple(shelves.splitlines()),
+        )
+        st.success("برچسب‌ها و قفسه‌ها ذخیره شدند.")
 
 
 
@@ -722,6 +762,8 @@ def render_page(page: str) -> None:
         render_reading_status()
     elif page == "یادداشت‌ها":
         render_personal_data()
+    elif page == "برچسب و قفسه":
+        render_organization()
     else:
         settings = load_settings()
         st.info("تنظیمات برنامه در Issueهای مرتبط تکمیل می‌شود.")
