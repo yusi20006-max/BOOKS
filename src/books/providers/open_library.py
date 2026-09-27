@@ -47,19 +47,9 @@ class OpenLibraryProvider:
             "lang": language,
             "offset": start_index,
             "limit": limit,
-            "fields": ",".join(
-                [
-                    "key",
-                    "title",
-                    "author_name",
-                    "first_publish_year",
-                    "publisher",
-                    "number_of_pages_median",
-                    "isbn",
-                    "language",
-                    "cover_i",
-                    "subject",
-                ]
+            "fields": (
+                "key,title,author_name,first_publish_year,publisher,"
+                "number_of_pages_median,isbn,language,cover_i,subject"
             ),
         }
         payload = self._get_json(f"{self.settings.open_library_base_url}/search.json", params)
