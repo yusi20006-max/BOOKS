@@ -1,7 +1,8 @@
 from __future__ import annotations
+
+from dataclasses import dataclass
 import os
 import re
-from dataclasses import dataclass
 
 
 _SECRET_PATTERNS=(re.compile(r"(?i)(token|secret|password|api[_-]?key)(\\s*[=:]\\s*)[^\\s,]+"),)
