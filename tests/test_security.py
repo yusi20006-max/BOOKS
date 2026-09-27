@@ -6,4 +6,5 @@ def test_privacy_defaults_are_local():
  p=PrivacyPolicy(); assert not p.cloud_allowed() and p.can_delete(); assert deletion_plan("b1")["delete_related"]
 def test_file_mode_validation():
  import tempfile,os
+
  with tempfile.NamedTemporaryFile() as f: harden_file(f.name); assert os.stat(f.name).st_mode & 0o777 == 0o600
