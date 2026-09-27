@@ -1,5 +1,4 @@
 import pytest
-
 from books.series import Series, Volume
 
 def test_series_and_volume_are_persian_first():
