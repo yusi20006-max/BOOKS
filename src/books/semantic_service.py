@@ -35,7 +35,7 @@ class SemanticLibraryService:
         return count
     def search(self,query:str,limit:int=10,lexical_weight:float=.45)->list[SearchResult]:
         if not query.strip(): return []
-        documents=dict(self._documents()); qv=self.provider.embed(query)
+        qv=self.provider.embed(query)
         with self.db.connect() as conn:
             titles={r["id"]:r["title"] for r in conn.execute("SELECT id,title FROM books") }
         with self.db.connect() as conn: semantic_rows=VectorStore(conn).search(qv,max(limit*4,limit))
