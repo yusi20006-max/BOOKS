@@ -23,7 +23,7 @@ def test_library_search_normalizes_persian_characters_and_zwnj(tmp_path):
     assert rows[0]["title"] == "شازده‌کوچولو"
 
     assert repository.search("محمد قاضی")
-    assert repository.search("978-0156012195") == []
+    assert len(repository.search("978-0156012195")) == 1
 
 
 def test_library_search_supports_isbn_without_punctuation(tmp_path):
