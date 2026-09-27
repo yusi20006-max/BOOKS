@@ -25,6 +25,7 @@ PAGES = {
     "برچسب و قفسه": "علاقه‌مندی، برچسب و قفسه‌های شخصی",
     "انتقال داده": "Import و Export امن کتابخانه",
     "پشتیبان‌گیری": "Backup و Restore امن SQLite",
+    "آمار مطالعه": "داشبورد آمار کتابخانه و مطالعه",
     "مطالعه": "پیگیری وضعیت و پیشرفت مطالعه",
     "یادداشت‌ها": "یادداشت‌ها و نقل‌قول‌های شخصی",
     "تنظیمات": "تنظیمات برنامه و داده‌ها",
@@ -463,6 +464,37 @@ def render_organization() -> None:
 
 
 
+def render_statistics() -> None:
+    settings = load_settings()
+    repository = BookRepository(Database(settings.db_path))
+    repository.db.migrate()
+    stats = repository.reading_statistics()
+
+    st.subheader("نمای کلی")
+    cols = st.columns(4)
+    cols[0].metric("تعداد کتاب", stats["book_count"])
+    cols[1].metric("تعداد نویسنده", stats["authors_count"])
+    cols[2].metric("کل صفحات", stats["total_pages"])
+    cols[3].metric("صفحات خوانده‌شده", stats["current_pages"])
+
+    status_labels = {
+        "unread": "نخوانده",
+        "reading": "در حال مطالعه",
+        "finished": "تمام‌شده",
+        "abandoned": "رهاشده",
+    }
+    st.subheader("وضعیت مطالعه")
+    for status, count in stats["status_counts"].items():
+        st.write(f"**{status_labels.get(status, status)}:** {count}")
+
+    st.subheader("روند میانگین پیشرفت")
+    if stats["progress_trend"]:
+        st.bar_chart(stats["progress_trend"])
+    else:
+        st.info("هنوز داده‌ای برای روند پیشرفت وجود ندارد.")
+
+
+
 def render_backup() -> None:
     settings = load_settings()
     backup = BackupService(settings.db_path)
@@ -877,6 +909,8 @@ def render_page(page: str) -> None:
         render_transfer()
     elif page == "پشتیبان‌گیری":
         render_backup()
+    elif page == "آمار مطالعه":
+        render_statistics()
     else:
         settings = load_settings()
         st.info("تنظیمات برنامه در Issueهای مرتبط تکمیل می‌شود.")
