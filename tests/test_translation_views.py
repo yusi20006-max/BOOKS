@@ -1,5 +1,5 @@
-from books.catalog import Edition,Translation
-from books.translation_views import translation_view,group_by_translation
+from books.catalog import Edition, Translation
+from books.translation_views import group_by_translation, translation_view
 
 def test_translation_view_keeps_translation_identity():
     e=Edition("e","w",publisher=" ناشر ")
