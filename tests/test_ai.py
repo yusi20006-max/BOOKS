@@ -1,4 +1,6 @@
 from books.ai import FailoverAI,book_assistant,summarize_book,summarize_chapter,personalized_reading_plan
+
+
 class P:
  def __init__(self,name,out=None,fail=False): self.name=name; self.out=out or name; self.fail=fail
  def complete(self,prompt):
