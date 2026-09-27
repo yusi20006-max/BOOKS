@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from datetime import date, timedelta
+
 from .normalization import normalize_text
+
 
 @dataclass(frozen=True, slots=True)
 class ReadingGoal:
