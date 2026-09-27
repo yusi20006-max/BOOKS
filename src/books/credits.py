@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 from .normalization import normalize_text
 
