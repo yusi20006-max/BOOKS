@@ -352,6 +352,44 @@ def render_edit_book() -> None:
     except sqlite3.IntegrityError:
         st.error("ویرایش باعث ایجاد Duplicate می‌شود و ذخیره نشد.")
 
+def render_reading_status() -> None:
+    settings = load_settings()
+    repository = BookRepository(Database(settings.db_path))
+    repository.db.migrate()
+    rows = repository.list(limit=1000)
+    if not rows:
+        st.info("کتابی برای تغییر وضعیت مطالعه وجود ندارد.")
+        return
+
+    labels = {row["id"]: row["title"] for row in rows}
+    selected_id = st.selectbox(
+        "کتاب",
+        list(labels),
+        format_func=lambda book_id: labels[book_id],
+    )
+    row = repository.get(selected_id)
+    if row is None:
+        st.error("رکورد انتخاب‌شده پیدا نشد.")
+        return
+
+    current = row["reading_status"] or "unread"
+    status_options = list(repository.READING_STATUSES)
+    status = st.selectbox(
+        "وضعیت مطالعه",
+        status_options,
+        index=status_options.index(current),
+        format_func=repository.READING_STATUSES.get,
+    )
+    st.caption(f"وضعیت فعلی: {repository.READING_STATUSES.get(current, current)}")
+
+    if st.button("ذخیره وضعیت", type="primary"):
+        if repository.update_reading_status(selected_id, status):
+            st.success("وضعیت مطالعه ذخیره شد.")
+        else:
+            st.error("کتاب پیدا نشد.")
+
+
+
 def render_delete_book() -> None:
     settings = load_settings()
     repository = BookRepository(Database(settings.db_path))
@@ -537,7 +575,7 @@ def render_library() -> None:
                         f"**سال:** {summary['year']} · "
                         f"**ISBN:** {summary['isbn']}"
                     )
-                    st.caption("وضعیت مطالعه در Phase Reading Management تکمیل می‌شود.")
+                    st.caption(f"وضعیت مطالعه: {BookRepository.READING_STATUSES.get(row['reading_status'], 'نخوانده')}")
     else:
         columns = st.columns(3)
         for index, row in enumerate(rows):
@@ -549,7 +587,7 @@ def render_library() -> None:
                     summary = library_row_summary(row)
                     st.write(summary["authors"])
                     st.caption(f"ISBN: {summary['isbn']}")
-                    st.caption("وضعیت مطالعه: در فاز بعد")
+                    st.caption(f"وضعیت مطالعه: {BookRepository.READING_STATUSES.get(row['reading_status'], 'نخوانده')}")
 
 def render_discovery() -> None:
     settings = load_settings()
@@ -594,7 +632,7 @@ def render_page(page: str) -> None:
     elif page == "حذف کتاب":
         render_delete_book()
     elif page == "مطالعه":
-        st.info("مدیریت مطالعه در Phaseهای Reading Management تکمیل می‌شود.")
+        render_reading_status()
     elif page == "یادداشت‌ها":
         st.info("یادداشت و نقل‌قول در Phaseهای دانش شخصی تکمیل می‌شود.")
     else:
