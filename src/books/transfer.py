@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from .db import BookRepository, Database
+from .db import BookRepository
 from .models import Book
 
 
