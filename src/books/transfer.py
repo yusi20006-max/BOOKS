@@ -9,7 +9,6 @@ from typing import Any
 from .db import BookRepository
 from .models import Book
 
-
 SCHEMA_VERSION = 1
 
 

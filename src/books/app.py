@@ -17,7 +17,6 @@ from .providers.open_library import OpenLibraryProvider
 from .scanner import BarcodeScanner
 from .transfer import BookTransferService
 
-
 PAGES = {
     "کتابخانه": "نمایش و مدیریت کتاب‌های ذخیره‌شده",
     "افزودن کتاب": "جستجو و انتخاب کتاب از منابع مختلف",
