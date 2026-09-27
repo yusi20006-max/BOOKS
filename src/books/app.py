@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from pathlib import Path
 
 import streamlit as st
 from PIL import Image
@@ -30,6 +31,7 @@ PAGES = {
     "مطالعه": "پیگیری وضعیت و پیشرفت مطالعه",
     "یادداشت‌ها": "یادداشت‌ها و نقل‌قول‌های شخصی",
     "جلسات مطالعه": "ثبت جلسات مطالعه در SQLite",
+    "کتاب‌های صوتی": "پخش و ثبت پیشرفت کتاب صوتی",
     "قرض‌ها": "مدیریت نسخه‌های فیزیکی و امانت",
     "اسکن و OCR": "اسکن متن و اصلاح قبل از ذخیره",
     "گزارش‌ها": "گزارش موجودی و مطالعه",
@@ -940,6 +942,88 @@ def render_reading_sessions() -> None:
     sessions = repository.list_reading_sessions(book_id)
     st.dataframe([dict(row) for row in sessions], use_container_width=True)
 
+def render_audiobooks() -> None:
+    settings = load_settings()
+    repository = BookRepository(Database(settings.db_path))
+    repository.db.migrate()
+    rows = repository.list(limit=1000)
+    if not rows:
+        st.info("ابتدا یک کتاب اضافه کنید.")
+        return
+
+    labels = {row["id"]: row["title"] for row in rows}
+    book_id = st.selectbox(
+        "کتاب",
+        list(labels),
+        format_func=lambda value: labels[value],
+        key="audiobook-book",
+    )
+    audiobooks = repository.list_audiobooks(book_id)
+    st.subheader("کتاب‌های صوتی ثبت‌شده")
+    if not audiobooks:
+        st.info("برای این کتاب هنوز فایل صوتی ثبت نشده است.")
+    for audio in audiobooks:
+        st.write(f"**{audio['path']}** · {audio['format'].upper()}")
+        if Path(audio["path"]).is_file():
+            st.audio(audio["path"])
+        else:
+            st.warning("فایل صوتی در مسیر ثبت‌شده پیدا نشد.")
+        duration = audio["duration_seconds"]
+        position = audio["position_seconds"]
+        progress = (position / duration) if duration else 0.0
+        st.progress(min(progress, 1.0), text=f"پیشرفت: {position} از {duration} ثانیه")
+        with st.form(f"audiobook-progress-{audio['id']}"):
+            new_position = st.number_input(
+                "موقعیت پخش (ثانیه)",
+                min_value=0,
+                max_value=duration,
+                value=position,
+                step=1,
+            )
+            speed = st.number_input(
+                "سرعت پخش",
+                min_value=0.25,
+                max_value=4.0,
+                value=float(audio["speed"]),
+                step=0.05,
+            )
+            if st.form_submit_button("ذخیره پیشرفت"):
+                repository.update_audiobook_progress(
+                    audio["id"],
+                    position_seconds=int(new_position),
+                    speed=float(speed),
+                )
+                st.success("پیشرفت کتاب صوتی ذخیره شد.")
+
+    with st.expander("افزودن فایل صوتی"):
+        path = st.text_input("مسیر فایل صوتی", key="new-audiobook-path")
+        audio_format = st.selectbox(
+            "قالب",
+            ("mp3", "m4a", "ogg", "wav", "aac", "flac"),
+            key="new-audiobook-format",
+        )
+        duration = st.number_input(
+            "مدت (ثانیه)",
+            min_value=0,
+            value=0,
+            step=1,
+            key="new-audiobook-duration",
+        )
+        if st.button("ثبت کتاب صوتی", type="primary"):
+            from uuid import uuid4
+            try:
+                repository.add_audiobook(
+                    str(uuid4()),
+                    book_id,
+                    path,
+                    audio_format,
+                    int(duration),
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.success("فایل صوتی ثبت شد.")
+
 def render_loans() -> None:
     settings = load_settings()
     repository = BookRepository(Database(settings.db_path))
@@ -1011,6 +1095,8 @@ def render_page(page: str) -> None:
         render_personal_data()
     elif page == "جلسات مطالعه":
         render_reading_sessions()
+    elif page == "کتاب‌های صوتی":
+        render_audiobooks()
     elif page == "قرض‌ها":
         render_loans()
     elif page == "اسکن و OCR":
