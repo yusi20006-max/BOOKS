@@ -26,7 +26,7 @@ class FakeProvider:
 
 def test_enrichment_fills_missing_fields_and_uses_cache(tmp_path):
     db = Database(tmp_path / "books.sqlite3")
-    assert db.migrate() == 7
+    assert db.migrate() == 8
     repository = BookRepository(db)
     source = FakeProvider(
         [
