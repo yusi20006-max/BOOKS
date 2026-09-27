@@ -54,6 +54,9 @@ jobs:
           python -c "from books.config import load_settings; from books.db import Database; s=load_settings(); assert Database(s.db_path).migrate() == 8"
           python -m books.health
 
+      - name: Release package and runtime gate
+        run: sh scripts/release-gate.sh
+
   docker:
     name: Docker build
     runs-on: ubuntu-latest
