@@ -8,6 +8,7 @@ from typing import Any, Protocol
 from .models import Book
 from .normalization import normalize_isbn, normalize_text
 
+
 class Provider(Protocol):
     def search(
         self,

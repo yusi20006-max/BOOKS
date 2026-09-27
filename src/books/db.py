@@ -12,6 +12,7 @@ from typing import Any, ClassVar
 from .models import Book
 from .normalization import normalize_isbn, normalize_text
 
+
 class Database:
     """Small SQLite boundary with migrations and explicit transactions."""
 
