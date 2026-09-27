@@ -276,10 +276,75 @@ def render_library() -> None:
         "جستجو در کتابخانه",
         placeholder="عنوان، نویسنده، مترجم، ناشر یا ISBN",
     )
-    try:
-        rows = repository.search(query, limit=100) if query.strip() else repository.list(limit=100)
-    except ValueError:
-        rows = []
+    all_rows = repository.list(limit=1000)
+    publishers = sorted({row["publisher"] for row in all_rows if row["publisher"]})
+    languages = sorted({row["language"] for row in all_rows if row["language"]})
+    authors = sorted({
+        author
+        for row in all_rows
+        for author in json.loads(row["authors_json"] or "[]")
+        if author
+    })
+    genres = sorted({
+        genre
+        for row in all_rows
+        for genre in json.loads(row["genres_json"] or "[]")
+        if genre
+    })
+    years = sorted(
+        {row["publication_year"] for row in all_rows if row["publication_year"]},
+        reverse=True,
+    )
+
+    filter_cols = st.columns(4)
+    with filter_cols[0]:
+        selected_genre = st.selectbox("ژانر", ["همه"] + genres)
+    with filter_cols[1]:
+        selected_author = st.selectbox("نویسنده", ["همه"] + authors)
+    with filter_cols[2]:
+        selected_publisher = st.selectbox("ناشر", ["همه"] + publishers)
+    with filter_cols[3]:
+        selected_language = st.selectbox("زبان", ["همه"] + languages)
+
+    sort_cols = st.columns(2)
+    with sort_cols[0]:
+        sort_label = st.selectbox(
+            "مرتب‌سازی",
+            ("آخرین تغییر", "عنوان", "سال انتشار", "ناشر"),
+        )
+    with sort_cols[1]:
+        descending = st.toggle("نزولی", value=True)
+
+    sort_map = {
+        "آخرین تغییر": "updated_at",
+        "عنوان": "title",
+        "سال انتشار": "publication_year",
+        "ناشر": "publisher",
+    }
+
+    if query.strip():
+        try:
+            rows = repository.search(query, limit=1000)
+        except ValueError:
+            rows = []
+        if selected_genre != "همه":
+            rows = [r for r in rows if selected_genre in json.loads(r["genres_json"] or "[]")]
+        if selected_author != "همه":
+            rows = [r for r in rows if selected_author in json.loads(r["authors_json"] or "[]")]
+        if selected_publisher != "همه":
+            rows = [r for r in rows if r["publisher"] == selected_publisher]
+        if selected_language != "همه":
+            rows = [r for r in rows if r["language"] == selected_language]
+    else:
+        rows = repository.filter_books(
+            genre=None if selected_genre == "همه" else selected_genre,
+            author=None if selected_author == "همه" else selected_author,
+            publisher=None if selected_publisher == "همه" else selected_publisher,
+            language=None if selected_language == "همه" else selected_language,
+            sort_by=sort_map[sort_label],
+            descending=descending,
+            limit=1000,
+        )
 
     if not rows:
         st.info("کتابخانه هنوز خالی است. از بخش «افزودن کتاب» یک کتاب انتخاب و ذخیره کنید.")
