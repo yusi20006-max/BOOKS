@@ -27,7 +27,16 @@ class Book:
     source_ids: Mapping[str, str] = field(default_factory=dict)
     notes: str | None = None
 
+    display_title: str = field(init=False, repr=False)
+    display_original_title: str | None = field(init=False, repr=False)
+    display_authors: tuple[str, ...] = field(init=False, repr=False)
+    display_translators: tuple[str, ...] = field(init=False, repr=False)
+
     def __post_init__(self) -> None:
+        display_title = _display_text(self.title)
+        display_original_title = _display_text(self.original_title) or None
+        display_authors = _display_people(self.authors)
+        display_translators = _display_people(self.translators)
         title = normalize_text(self.title)
         if not title:
             raise ValueError("title is required")
@@ -43,6 +52,10 @@ class Book:
         if isbn13 is not None and not validate_isbn13(isbn13):
             raise ValueError("invalid ISBN-13")
 
+        object.__setattr__(self, "display_title", display_title)
+        object.__setattr__(self, "display_original_title", display_original_title)
+        object.__setattr__(self, "display_authors", display_authors)
+        object.__setattr__(self, "display_translators", display_translators)
         object.__setattr__(self, "title", title)
         object.__setattr__(self, "original_title", normalize_text(self.original_title) or None)
         object.__setattr__(self, "authors", _clean_people(self.authors))
@@ -68,3 +81,13 @@ def _clean_values(values: tuple[str, ...] | list[str]) -> tuple[str, ...]:
 
 def _clean_people(values: tuple[str, ...] | list[str]) -> tuple[str, ...]:
     return _clean_values(values)
+
+
+def _display_text(value: str | None) -> str:
+    if value is None:
+        return ""
+    return value.strip()
+
+
+def _display_people(values: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    return tuple(value.strip() for value in values if value and value.strip())
