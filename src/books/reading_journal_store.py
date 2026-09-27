@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-import sqlite3
 from datetime import date
-from uuid import uuid4
 
 from .db import Database, transaction
-from .reading_journal import ReadingGoal, ReadingSession, calendar_sessions, goal_progress, milestones, streak_days
+from .reading_journal import (
+    ReadingGoal,
+    ReadingSession,
+    calendar_sessions,
+    goal_progress,
+    milestones,
+    streak_days,
+)
 
 
 class ReadingJournalStore:
