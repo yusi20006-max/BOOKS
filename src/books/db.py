@@ -284,6 +284,23 @@ class BookRepository:
                 (*params, limit, offset),
             ).fetchall()
 
+    READING_STATUSES = {
+        "unread": "نخوانده",
+        "reading": "در حال مطالعه",
+        "finished": "تمام‌شده",
+        "abandoned": "رهاشده",
+    }
+
+    def update_reading_status(self, book_id: str, status: str) -> bool:
+        if status not in self.READING_STATUSES:
+            raise ValueError("unsupported reading status")
+        with transaction(self.db) as conn:
+            result = conn.execute(
+                "UPDATE books SET reading_status = ?, updated_at = ? WHERE id = ?",
+                (status, datetime.now(timezone.utc).isoformat(), book_id),
+            )
+            return result.rowcount == 1
+
     def find_duplicates(self, book: Book, exclude_id: str | None = None) -> list[sqlite3.Row]:
         candidates: list[sqlite3.Row] = []
         with self.db.connect() as conn:
