@@ -1,8 +1,8 @@
-from dataclasses import dataclass
-from typing import Protocol
 import math
 import re
 import sqlite3
+from dataclasses import dataclass
+from typing import Protocol
 
 from .normalization import normalize_text
 
