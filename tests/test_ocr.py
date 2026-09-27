@@ -1,5 +1,6 @@
 from books.ocr import ocr_metadata, scan_to_book_draft
 
+
 def test_persian_ocr_metadata():
  r=ocr_metadata("کتاب نمونه\\nناشر نمونه\\n978-0-15-601219-5"); assert r.title=="کتاب نمونه" and r.publisher=="ناشر نمونه" and r.isbn=="9780156012195"
 def test_correction_payload_is_editable():
