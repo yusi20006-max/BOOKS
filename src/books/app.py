@@ -4,12 +4,14 @@ import json
 import sqlite3
 
 import streamlit as st
+from PIL import Image
 
 from .config import load_settings
 from .db import BookRepository, Database
 from .enrichment import MetadataEnricher
 from .transfer import BookTransferService
 from .backup import BackupService
+from .scanner import BarcodeScanner
 from .models import Book
 from .discovery import DiscoveryService, MergedDiscoveryItem
 from .providers.google_books import GoogleBooksProvider
@@ -859,9 +861,36 @@ def render_library() -> None:
 
 def render_discovery() -> None:
     settings = load_settings()
+
+    st.subheader("اسکن ISBN")
+    camera = st.camera_input("بارکد پشت جلد را روبه‌روی دوربین بگیرید.")
+    if camera is not None:
+        try:
+            image = Image.open(camera)
+            result = BarcodeScanner().scan(image)
+        except Exception as exc:
+            st.error(f"خواندن تصویر ناموفق بود: {exc}")
+        else:
+            if result.isbn:
+                st.session_state["scanned_isbn"] = result.isbn
+                st.success(f"{result.format} شناسایی شد: {result.isbn}")
+            else:
+                st.warning(result.error or "ISBN معتبر پیدا نشد.")
+
+    scanned_isbn = st.session_state.get("scanned_isbn")
+    if scanned_isbn:
+        st.info(f"ISBN اسکن‌شده: {scanned_isbn}")
+        scan_search = st.button("جستجوی ISBN اسکن‌شده", type="primary")
+    else:
+        scan_search = False
+
     query = st.text_input("عنوان، نویسنده یا ISBN", placeholder="مثلاً شازده کوچولو")
     limit = st.slider("تعداد نتایج", min_value=1, max_value=20, value=10)
     search = st.button("جستجوی کتاب", type="primary", disabled=not query.strip())
+
+    if scan_search:
+        query = scanned_isbn
+        search = True
 
     if search:
         service = DiscoveryService(
