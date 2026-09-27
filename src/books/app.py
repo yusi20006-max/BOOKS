@@ -39,6 +39,7 @@ PAGES = {
     "مجموعه و ویرایش‌ها": "مجموعه‌ها، جلدها، ویرایش‌ها و ترجمه‌ها",
     "اسکن و OCR": "اسکن متن و اصلاح قبل از ذخیره",
     "گزارش‌ها": "گزارش موجودی و مطالعه",
+    "دستیار هوشمند": "خلاصه، پرسش، پیشنهاد و برنامه مطالعه با AI",
     "تنظیمات": "تنظیمات برنامه و داده‌ها",
 }
 
@@ -1011,6 +1012,26 @@ def render_knowledge_base() -> None:
     st.write("مفاهیم ثبت‌شده:", "، ".join(node.label for node in store.nodes()) or "—")
 
 
+
+def render_ai_assistant() -> None:
+    from .ai_service import BookAIService, local_first_provider
+    settings = load_settings(); repository = BookRepository(Database(settings.db_path)); repository.db.migrate()
+    rows=repository.list(limit=1000)
+    st.subheader("دستیار هوشمند کتاب")
+    if not rows: st.info("ابتدا کتابی به کتابخانه اضافه کنید."); return
+    labels={r["id"]:r["title"] for r in rows}; book_id=st.selectbox("کتاب",list(labels),format_func=lambda x:labels[x],key="ai-book")
+    action=st.selectbox("عمل",("summary","questions","recommendation","insights"),format_func=lambda x:{"summary":"خلاصه","questions":"پرسش و پاسخ","recommendation":"پیشنهاد","insights":"بینش"}[x])
+    context=st.text_area("زمینه یا پرسش")
+    if st.button("اجرا",type="primary"):
+        try: st.write(BookAIService(local_first_provider()).action(action,labels[book_id],context))
+        except RuntimeError as exc: st.error(f"اتصال به درگاه هوش مصنوعی ناموفق بود: {exc}")
+    with st.expander("خلاصه فصل/کتاب و برنامه مطالعه"):
+        text=st.text_area("متن",key="ai-text"); chapter=st.text_input("عنوان فصل",key="ai-chapter"); goal=st.text_input("هدف مطالعه",key="ai-goal")
+        if text and st.button("خلاصه کتاب"): st.write(BookAIService(local_first_provider()).summarize(labels[book_id],text))
+        if text and chapter and st.button("خلاصه فصل"): st.write(BookAIService(local_first_provider()).summarize_chapter(labels[book_id],chapter,text))
+        if goal and st.button("ساخت برنامه مطالعه"): st.write(BookAIService(local_first_provider()).reading_plan("\n".join(r["title"] for r in rows),goal))
+
+
 def render_reading_sessions() -> None:
     settings = load_settings()
     repository = BookRepository(Database(settings.db_path))
@@ -1203,6 +1224,8 @@ def render_page(page: str) -> None:
         render_ocr()
     elif page == "گزارش‌ها":
         render_reports()
+    elif page == "دستیار هوشمند":
+        render_ai_assistant()
     elif page == "برچسب و قفسه":
         render_organization()
     elif page == "انتقال داده":
