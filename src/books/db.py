@@ -193,6 +193,63 @@ class BookRepository:
                 (*params, limit, offset),
             ).fetchall()
 
+    def filter_books(
+        self,
+        *,
+        genre: str | None = None,
+        author: str | None = None,
+        publisher: str | None = None,
+        publication_year: int | None = None,
+        language: str | None = None,
+        sort_by: str = "updated_at",
+        descending: bool = True,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[sqlite3.Row]:
+        if limit < 1 or limit > 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        if offset < 0:
+            raise ValueError("offset must be non-negative")
+
+        sort_columns = {
+            "updated_at": "updated_at",
+            "title": "title",
+            "publication_year": "publication_year",
+            "publisher": "publisher",
+        }
+        if sort_by not in sort_columns:
+            raise ValueError("unsupported sort field")
+
+        clauses: list[str] = []
+        params: list[Any] = []
+
+        for column, value in (
+            ("genres_json", genre),
+            ("authors_json", author),
+            ("publisher", publisher),
+            ("language", language),
+        ):
+            if value:
+                normalized = normalize_text(value)
+                if normalized:
+                    clauses.append(f"{column} LIKE ?")
+                    params.append(f"%{normalized}%")
+
+        if publication_year is not None:
+            clauses.append("publication_year = ?")
+            params.append(publication_year)
+
+        where = "WHERE " + " AND ".join(clauses) + " " if clauses else ""
+        direction = "DESC" if descending else "ASC"
+        order = sort_columns[sort_by]
+
+        with self.db.connect() as conn:
+            return conn.execute(
+                f"SELECT * FROM books {where}ORDER BY {order} {direction}, id "
+                "LIMIT ? OFFSET ?",
+                (*params, limit, offset),
+            ).fetchall()
+
     def delete(self, book_id: str) -> bool:
         with transaction(self.db) as conn:
             result = conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
