@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from .catalog import Edition
 from .normalization import normalize_isbn, normalize_text
 
+
 @dataclass(frozen=True, slots=True)
 class EditionMatch:
     left_id: str
