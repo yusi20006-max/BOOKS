@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+import logging
 from dataclasses import dataclass
 from typing import Protocol
 
 from .models import Book
+
+
+logger = logging.getLogger(__name__)
 
 
 class PersianMetadataProvider(Protocol):
@@ -31,8 +35,8 @@ class PersianProviderRegistry:
         for provider in self.providers:
             try:
                 results.extend(provider.search(query, limit=limit))
-            except Exception:
-                # One optional Persian source must not make other sources unavailable.
+            except (OSError, RuntimeError, ValueError) as exc:
+                logger.warning("Persian metadata provider failed", exc_info=exc)
                 continue
             if len(results) >= limit:
                 break
