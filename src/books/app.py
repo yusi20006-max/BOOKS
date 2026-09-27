@@ -7,6 +7,7 @@ import streamlit as st
 
 from .config import load_settings
 from .db import BookRepository, Database
+from .models import Book
 from .discovery import DiscoveryService, MergedDiscoveryItem
 from .providers.google_books import GoogleBooksProvider
 from .providers.open_library import OpenLibraryProvider
@@ -16,6 +17,7 @@ PAGES = {
     "کتابخانه": "نمایش و مدیریت کتاب‌های ذخیره‌شده",
     "افزودن کتاب": "جستجو و انتخاب کتاب از منابع مختلف",
     "تأیید و ویرایش": "اصلاح و اعتبارسنجی اطلاعات قبل از ذخیره",
+    "ویرایش کتاب": "ویرایش کتاب‌های ذخیره‌شده",
     "مطالعه": "پیگیری وضعیت و پیشرفت مطالعه",
     "یادداشت‌ها": "یادداشت‌ها و نقل‌قول‌های شخصی",
     "تنظیمات": "تنظیمات برنامه و داده‌ها",
@@ -228,6 +230,127 @@ def render_confirm_edit() -> None:
         st.write(f"**خلاصه:** {edited.summary or '—'}")
 
 
+def row_to_book(row) -> Book:
+    return Book(
+        title=row["title"],
+        original_title=row["original_title"],
+        authors=tuple(json.loads(row["authors_json"] or "[]")),
+        translators=tuple(json.loads(row["translators_json"] or "[]")),
+        publisher=row["publisher"],
+        pages=row["pages"],
+        publication_year=row["publication_year"],
+        isbn10=row["isbn10"],
+        isbn13=row["isbn13"],
+        language=row["language"],
+        genres=tuple(json.loads(row["genres_json"] or "[]")),
+        subjects=tuple(json.loads(row["subjects_json"] or "[]")),
+        summary=row["summary"],
+        cover_url=row["cover_url"],
+        source_ids=json.loads(row["source_ids_json"] or "{}"),
+        notes=row["notes"],
+    )
+
+
+def render_edit_book() -> None:
+    settings = load_settings()
+    repository = BookRepository(Database(settings.db_path))
+    repository.db.migrate()
+    rows = repository.list(limit=1000)
+    if not rows:
+        st.info("کتابی برای ویرایش وجود ندارد.")
+        return
+
+    labels = {row["id"]: row["title"] for row in rows}
+    selected_id = st.selectbox(
+        "کتاب",
+        list(labels),
+        format_func=lambda book_id: labels[book_id],
+    )
+    row = repository.get(selected_id)
+    if row is None:
+        st.error("رکورد انتخاب‌شده پیدا نشد.")
+        return
+
+    book = row_to_book(row)
+    with st.form("edit-library-book"):
+        title = st.text_input("عنوان", value=book.title)
+        original_title = st.text_input("عنوان اصلی", value=book.original_title or "")
+        authors = st.text_area("نویسندگان — هر نفر در یک خط", value="\n".join(book.authors))
+        translators = st.text_area("مترجمان — هر نفر در یک خط", value="\n".join(book.translators))
+        publisher = st.text_input("ناشر", value=book.publisher or "")
+        pages = st.number_input("تعداد صفحات", min_value=0, value=book.pages or 0, step=1)
+        publication_year = st.number_input(
+            "سال انتشار", min_value=1, max_value=9999,
+            value=book.publication_year or 1400, step=1,
+        )
+        isbn10 = st.text_input("ISBN-10", value=book.isbn10 or "")
+        isbn13 = st.text_input("ISBN-13", value=book.isbn13 or "")
+        language = st.text_input("زبان", value=book.language or "")
+        genres = st.text_area("ژانرها — هر مورد در یک خط", value="\n".join(book.genres))
+        subjects = st.text_area("موضوعات — هر مورد در یک خط", value="\n".join(book.subjects))
+        summary = st.text_area("خلاصه", value=book.summary or "")
+        cover_url = st.text_input("نشانی جلد", value=book.cover_url or "")
+        notes = st.text_area("یادداشت", value=book.notes or "")
+        submitted = st.form_submit_button("ذخیره ویرایش", type="primary")
+
+    if not submitted:
+        return
+
+    try:
+        edited = build_edited_book(
+            title=title,
+            original_title=original_title,
+            authors=authors,
+            translators=translators,
+            publisher=publisher,
+            pages=int(pages),
+            publication_year=int(publication_year),
+            isbn10=isbn10,
+            isbn13=isbn13,
+            language=language,
+            genres=genres,
+            subjects=subjects,
+            summary=summary,
+            cover_url=cover_url,
+            source_ids=dict(book.source_ids),
+        )
+        edited = Book(
+            title=edited.title,
+            original_title=edited.original_title,
+            authors=edited.authors,
+            translators=edited.translators,
+            publisher=edited.publisher,
+            pages=edited.pages,
+            publication_year=edited.publication_year,
+            isbn10=edited.isbn10,
+            isbn13=edited.isbn13,
+            language=edited.language,
+            genres=edited.genres,
+            subjects=edited.subjects,
+            summary=edited.summary,
+            cover_url=edited.cover_url,
+            source_ids=edited.source_ids,
+            notes=notes or None,
+        )
+    except (TypeError, ValueError) as exc:
+        st.error(f"اطلاعات واردشده معتبر نیست: {exc}")
+        return
+
+    for isbn in (edited.isbn13, edited.isbn10):
+        if isbn:
+            existing = repository.get_by_isbn(isbn)
+            if existing is not None and existing["id"] != selected_id:
+                st.error("این ISBN متعلق به کتاب دیگری است و ویرایش انجام نشد.")
+                return
+
+    try:
+        if repository.update_book(selected_id, edited):
+            st.success("ویرایش کتاب با موفقیت ذخیره شد.")
+        else:
+            st.error("کتاب انتخاب‌شده دیگر وجود ندارد.")
+    except sqlite3.IntegrityError:
+        st.error("ویرایش باعث ایجاد Duplicate می‌شود و ذخیره نشد.")
+
 def _render_save_action(book) -> None:
     st.divider()
     st.subheader("افزودن به کتابخانه")
@@ -439,6 +562,8 @@ def render_page(page: str) -> None:
         render_discovery()
     elif page == "تأیید و ویرایش":
         render_confirm_edit()
+    elif page == "ویرایش کتاب":
+        render_edit_book()
     elif page == "مطالعه":
         st.info("مدیریت مطالعه در Phaseهای Reading Management تکمیل می‌شود.")
     elif page == "یادداشت‌ها":
