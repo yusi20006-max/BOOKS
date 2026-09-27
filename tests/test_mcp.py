@@ -1,5 +1,5 @@
 import pytest
-from books.mcp import MCPServer, build_server
+from books.mcp import build_server
 
 class R:
  def search(self,q,limit=100): return [{"q":q}]
