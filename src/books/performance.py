@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from time import monotonic
 import logging
 
+
 @dataclass(slots=True)
 class TTLCache:
  capacity:int=256; ttl:float=60.0
