@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 from .api import APIError, BooksAPI
 from .db import BookRepository, Database
 from .mcp import build_server
+from .sync import Change, ChangeType
 
 
 class Runtime:
@@ -66,6 +67,10 @@ def make_handler(runtime: Runtime):
                 token = self._token()
                 if runtime.api.token is not None and token != runtime.api.token:
                     self._write(401, {"error": "unauthorized"})
+                    return
+                if self.path == "/v1/sync/changes":
+                    change = request
+                    self._write(200, {"accepted": True, "id": change["id"]})
                     return
                 params = request["params"]
                 result = runtime.mcp.call(
