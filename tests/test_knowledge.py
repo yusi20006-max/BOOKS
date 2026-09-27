@@ -1,4 +1,4 @@
-from books.knowledge import Quote,Note,KnowledgeNode,KnowledgeEdge,knowledge_search
+from books.knowledge import KnowledgeEdge, KnowledgeNode, Note, Quote, knowledge_search
 
 
 def test_quote_note_and_normalization():
