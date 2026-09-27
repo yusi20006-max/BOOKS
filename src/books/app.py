@@ -18,6 +18,7 @@ PAGES = {
     "افزودن کتاب": "جستجو و انتخاب کتاب از منابع مختلف",
     "تأیید و ویرایش": "اصلاح و اعتبارسنجی اطلاعات قبل از ذخیره",
     "ویرایش کتاب": "ویرایش کتاب‌های ذخیره‌شده",
+    "حذف کتاب": "حذف امن کتاب و بررسی Duplicate",
     "مطالعه": "پیگیری وضعیت و پیشرفت مطالعه",
     "یادداشت‌ها": "یادداشت‌ها و نقل‌قول‌های شخصی",
     "تنظیمات": "تنظیمات برنامه و داده‌ها",
@@ -351,6 +352,36 @@ def render_edit_book() -> None:
     except sqlite3.IntegrityError:
         st.error("ویرایش باعث ایجاد Duplicate می‌شود و ذخیره نشد.")
 
+def render_delete_book() -> None:
+    settings = load_settings()
+    repository = BookRepository(Database(settings.db_path))
+    repository.db.migrate()
+    rows = repository.list(limit=1000)
+    if not rows:
+        st.info("کتابی برای حذف وجود ندارد.")
+        return
+
+    labels = {row["id"]: row["title"] for row in rows}
+    selected_id = st.selectbox(
+        "کتاب",
+        list(labels),
+        format_func=lambda book_id: labels[book_id],
+    )
+    row = repository.get(selected_id)
+    if row is None:
+        st.error("رکورد انتخاب‌شده پیدا نشد.")
+        return
+
+    st.warning("حذف کتاب برگشت‌پذیر نیست.")
+    st.write(f"**عنوان:** {row['title']}")
+    st.write(f"**ISBN:** {row['isbn13'] or row['isbn10'] or '—'}")
+    confirmed = st.checkbox("تأیید می‌کنم این کتاب را حذف کنم.", key="confirm-delete-book")
+    if st.button("حذف قطعی کتاب", type="primary", disabled=not confirmed):
+        if repository.delete(selected_id):
+            st.success("کتاب حذف شد.")
+        else:
+            st.error("کتاب پیدا نشد یا قبلاً حذف شده است.")
+
 def _render_save_action(book) -> None:
     st.divider()
     st.subheader("افزودن به کتابخانه")
@@ -360,15 +391,11 @@ def _render_save_action(book) -> None:
         db.migrate()
         repository = BookRepository(db)
 
-        existing = None
-        if book.isbn13:
-            existing = repository.get_by_isbn(book.isbn13)
-        if existing is None and book.isbn10:
-            existing = repository.get_by_isbn(book.isbn10)
-
-        if existing is not None:
-            st.warning("این کتاب با همین ISBN قبلاً در کتابخانه وجود دارد و دوباره ذخیره نشد.")
-            st.session_state["saved_book_id"] = existing["id"]
+        duplicates = repository.find_duplicates(book)
+        if duplicates:
+            st.warning("کتاب مشابهی در کتابخانه پیدا شد؛ ابتدا نتیجه را بررسی کنید.")
+            for duplicate in duplicates:
+                st.write(f"• {duplicate['title']} — {duplicate['isbn13'] or duplicate['isbn10'] or 'بدون ISBN'}")
             return
 
         try:
@@ -564,6 +591,8 @@ def render_page(page: str) -> None:
         render_confirm_edit()
     elif page == "ویرایش کتاب":
         render_edit_book()
+    elif page == "حذف کتاب":
+        render_delete_book()
     elif page == "مطالعه":
         st.info("مدیریت مطالعه در Phaseهای Reading Management تکمیل می‌شود.")
     elif page == "یادداشت‌ها":
