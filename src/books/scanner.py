@@ -28,7 +28,7 @@ class BarcodeScanner:
         try:
             decoded = tuple(self.decoder(image) or ())
         except ImportError:
-            return ScanResult(None, None, None, "barcode decoder is not installed")
+            return ScanResult(None, None, None, "barcode decoder is not installed; install BOOKS with the [barcode] extra")
         except Exception as exc:  # noqa: BLE001
             return ScanResult(None, None, None, str(exc) or "barcode decoding failed")
 
