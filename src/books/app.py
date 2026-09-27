@@ -352,6 +352,51 @@ def render_edit_book() -> None:
     except sqlite3.IntegrityError:
         st.error("ویرایش باعث ایجاد Duplicate می‌شود و ذخیره نشد.")
 
+def render_personal_data() -> None:
+    settings = load_settings()
+    repository = BookRepository(Database(settings.db_path))
+    repository.db.migrate()
+    rows = repository.list(limit=1000)
+    if not rows:
+        st.info("کتابی برای یادداشت وجود ندارد.")
+        return
+
+    labels = {row["id"]: row["title"] for row in rows}
+    selected_id = st.selectbox(
+        "کتاب",
+        list(labels),
+        format_func=lambda book_id: labels[book_id],
+    )
+    personal = repository.get_personal_data(selected_id)
+    current_rating = personal["rating"] if personal else None
+    current_note = personal["note"] if personal else ""
+    current_quote = personal["quote"] if personal else ""
+
+    rating_options = [None, 1, 2, 3, 4, 5]
+    rating = st.selectbox(
+        "امتیاز شخصی",
+        rating_options,
+        index=rating_options.index(current_rating),
+        format_func=lambda value: "بدون امتیاز" if value is None else f"{value} از ۵",
+    )
+    note = st.text_area("یادداشت شخصی", value=current_note or "", height=180)
+    quote = st.text_area("نقل‌قول شخصی", value=current_quote or "", height=140)
+
+    if st.button("ذخیره اطلاعات شخصی", type="primary"):
+        try:
+            repository.update_personal_data(
+                selected_id,
+                rating=rating,
+                note=note,
+                quote=quote,
+            )
+        except ValueError as exc:
+            st.error(str(exc))
+        else:
+            st.success("امتیاز و اطلاعات شخصی ذخیره شد.")
+
+
+
 def render_reading_status() -> None:
     settings = load_settings()
     repository = BookRepository(Database(settings.db_path))
@@ -676,7 +721,7 @@ def render_page(page: str) -> None:
     elif page == "مطالعه":
         render_reading_status()
     elif page == "یادداشت‌ها":
-        st.info("یادداشت و نقل‌قول در Phaseهای دانش شخصی تکمیل می‌شود.")
+        render_personal_data()
     else:
         settings = load_settings()
         st.info("تنظیمات برنامه در Issueهای مرتبط تکمیل می‌شود.")
