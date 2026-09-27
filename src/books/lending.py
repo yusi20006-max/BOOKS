@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import date
 
+
 @dataclass(frozen=True, slots=True)
 class Acquisition:
     copy_id: str
