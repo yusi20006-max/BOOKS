@@ -28,7 +28,7 @@ jobs:
         run: python -m pytest -q
       - name: Offline smoke
         env:
-          BOOKS_DB_PATH: ${{ runner.temp }/books.sqlite3
+                    BOOKS_DB_PATH: ${{ runner.temp }}/books.sqlite3
         run: |
           python -c "from books.config import load_settings; from books.db import Database; s=load_settings(); assert Database(s.db_path).migrate() == 7"
           python -m books.health
