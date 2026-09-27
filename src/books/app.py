@@ -31,6 +31,8 @@ PAGES = {
     "یادداشت‌ها": "یادداشت‌ها و نقل‌قول‌های شخصی",
     "جلسات مطالعه": "ثبت جلسات مطالعه در SQLite",
     "قرض‌ها": "مدیریت نسخه‌های فیزیکی و امانت",
+    "اسکن و OCR": "اسکن متن و اصلاح قبل از ذخیره",
+    "گزارش‌ها": "گزارش موجودی و مطالعه",
     "تنظیمات": "تنظیمات برنامه و داده‌ها",
 }
 
@@ -958,6 +960,37 @@ def render_loans() -> None:
         st.success("نسخه و امانت در SQLite ثبت شد.")
     st.dataframe([dict(row) for row in repository.list_loans()], use_container_width=True)
 
+
+def render_ocr() -> None:
+    settings = load_settings()
+    repository = BookRepository(Database(settings.db_path))
+    repository.db.migrate()
+    st.subheader("OCR")
+    text = st.text_area("متن OCR یا صفحه مشخصات کتاب", height=220)
+    if not text:
+        st.info("متن OCR را وارد کنید تا پیش‌نمایش قابل اصلاح ساخته شود.")
+        return
+    from .ocr import scan_to_book_draft
+    draft = scan_to_book_draft(text)
+    title = st.text_input("عنوان اصلاح‌شده", value=str(draft["title"]))
+    publisher = st.text_input("ناشر اصلاح‌شده", value=str(draft["publisher"]))
+    isbn = st.text_input("ISBN اصلاح‌شده", value=str(draft["isbn"]))
+    if st.button("ذخیره نتیجه OCR", type="primary"):
+        book = Book(title=title, publisher=publisher or None, isbn13=isbn or None)
+        repository.create_book(book)
+        st.success("نتیجه OCR پس از اصلاح در SQLite ذخیره شد.")
+
+def render_reports() -> None:
+    settings = load_settings()
+    repository = BookRepository(Database(settings.db_path))
+    repository.db.migrate()
+    rows = [dict(row) for row in repository.list(limit=1000)]
+    from .reports import inventory_analytics, report_csv, report_json
+    metrics = inventory_analytics(rows)
+    st.json(metrics)
+    st.download_button("JSON گزارش", report_json(metrics), "books-report.json", "application/json")
+    st.download_button("CSV کتاب‌ها", report_csv(rows), "books.csv", "text/csv")
+
 def render_page(page: str) -> None:
     st.title(page)
     st.caption(PAGES[page])
@@ -980,6 +1013,10 @@ def render_page(page: str) -> None:
         render_reading_sessions()
     elif page == "قرض‌ها":
         render_loans()
+    elif page == "اسکن و OCR":
+        render_ocr()
+    elif page == "گزارش‌ها":
+        render_reports()
     elif page == "برچسب و قفسه":
         render_organization()
     elif page == "انتقال داده":
