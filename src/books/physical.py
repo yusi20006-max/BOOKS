@@ -17,3 +17,15 @@ class ShelfPosition:
     position: int = 1
     def __post_init__(self):
         if self.level < 1 or self.position < 1: raise ValueError("shelf coordinates must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class PhysicalCopy:
+    id: str
+    edition_id: str
+    condition: str = "good"
+    internal_code: str|None = None
+    status: str = "available"
+    def __post_init__(self):
+        if self.status not in {"available","on_loan","lost"}: raise ValueError("invalid copy status")
+        if self.condition not in {"new","good","fair","poor","damaged"}: raise ValueError("invalid copy condition")
