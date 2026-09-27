@@ -1,5 +1,8 @@
 import pytest
+
 from books.api import BooksAPI,RateLimiter,APIError
+
+
 class R:
  def list(self,*a): return []
  def search(self,*a): return []
