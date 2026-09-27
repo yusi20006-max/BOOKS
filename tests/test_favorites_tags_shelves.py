@@ -19,7 +19,7 @@ def test_favorite_and_many_to_many_tags_shelves_persist(tmp_path):
     assert personal["favorite"] == 1
     tags, shelves = repository.get_organization(book_id)
     assert tags == ("دانش", "فارسی")
-    assert shelves == ("مطالعه", "مرجع")
+    assert shelves == ("مرجع", "مطالعه")
 
 
 def test_organization_requires_existing_book(tmp_path):
