@@ -134,6 +134,40 @@ class BookRepository:
         }
         return self.create(payload)
 
+    def update_book(self, book_id: str, book: Book) -> bool:
+        updated_at = datetime.now(timezone.utc).isoformat()
+        values = (
+            book.title,
+            book.original_title,
+            json.dumps(book.authors, ensure_ascii=False),
+            json.dumps(book.translators, ensure_ascii=False),
+            book.publisher,
+            book.pages,
+            book.publication_year,
+            book.isbn10,
+            book.isbn13,
+            book.language,
+            json.dumps(book.genres, ensure_ascii=False),
+            json.dumps(book.subjects, ensure_ascii=False),
+            book.summary,
+            book.cover_url,
+            json.dumps(dict(book.source_ids), ensure_ascii=False),
+            book.notes,
+            updated_at,
+            book_id,
+        )
+        with transaction(self.db) as conn:
+            result = conn.execute(
+                """UPDATE books SET
+                    title = ?, original_title = ?, authors_json = ?, translators_json = ?,
+                    publisher = ?, pages = ?, publication_year = ?, isbn10 = ?, isbn13 = ?,
+                    language = ?, genres_json = ?, subjects_json = ?, summary = ?,
+                    cover_url = ?, source_ids_json = ?, notes = ?, updated_at = ?
+                WHERE id = ?""",
+                values,
+            )
+            return result.rowcount == 1
+
     def get_by_isbn(self, isbn: str) -> sqlite3.Row | None:
         normalized = str(isbn).strip()
         if not normalized:
