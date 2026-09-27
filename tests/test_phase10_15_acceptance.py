@@ -1,21 +1,41 @@
-from datetime import date
 import sqlite3
+from datetime import date
 
-from books.ai import FailoverAI, book_assistant, personalized_reading_plan, summarize_book, summarize_chapter
+from books.ai import (
+    FailoverAI,
+    book_assistant,
+    personalized_reading_plan,
+    summarize_book,
+    summarize_chapter,
+)
+from books.catalog import Edition, Translation
 from books.digital import Annotation
 from books.edition_compare import compare_editions, is_duplicate_edition
 from books.knowledge import KnowledgeEdge, KnowledgeNode, Note, Quote, knowledge_search
-from books.reading_journal import ReadingGoal, ReadingSession, calendar_sessions, goal_progress, milestones, streak_days
+from books.reading_journal import (
+    ReadingGoal,
+    ReadingSession,
+    calendar_sessions,
+    goal_progress,
+    milestones,
+    streak_days,
+)
 from books.search_ranking import rank
-from books.semantic import HashEmbeddingProvider, VectorStore, hybrid_score, recommend_similar, semantic_search
+from books.semantic import (
+    HashEmbeddingProvider,
+    VectorStore,
+    hybrid_score,
+    recommend_similar,
+    semantic_search,
+)
 from books.series import Series, Volume
 from books.translation_views import TranslationView, group_by_translation, translation_view
-from books.catalog import Edition, Translation
 
 
 class Provider:
     def __init__(self, name, result="ok", fail=False):
         self.name, self.result, self.fail = name, result, fail
+
     def complete(self, prompt):
         if self.fail:
             raise RuntimeError("down")
@@ -61,12 +81,21 @@ def test_phase_10_to_15_acceptance_contracts():
 
     provider = HashEmbeddingProvider(32)
     conn = sqlite3.connect(":memory:")
-    conn.execute("CREATE TABLE embeddings(item_id TEXT PRIMARY KEY,text TEXT,vector_json TEXT NOT NULL)")
+    conn.execute(
+        "CREATE TABLE embeddings(item_id TEXT PRIMARY KEY,text TEXT,vector_json TEXT NOT NULL)"
+    )
     store = VectorStore(conn)
     store.put("b1", "کتاب فارسی", provider.embed("کتاب فارسی"))
     store.put("b2", "مهندسی نرم افزار", provider.embed("مهندسی نرم افزار"))
     assert store.search(provider.embed("کتاب فارسی"), 1)[0][1] == "b1"
-    assert semantic_search("کتاب فارسی", [("b1", "کتاب فارسی"), ("b2", "نرم افزار")], provider)[0][1] == "b1"
-    assert recommend_similar("b1", [("b1", "کتاب فارسی"), ("b2", "کتاب فارسی"), ("b3", "آشپزی")], provider, 1)[0][1] == "b2"
+    assert semantic_search(
+        "کتاب فارسی", [("b1", "کتاب فارسی"), ("b2", "نرم افزار")], provider
+    )[0][1] == "b1"
+    assert recommend_similar(
+        "b1",
+        [("b1", "کتاب فارسی"), ("b2", "کتاب فارسی"), ("b3", "آشپزی")],
+        provider,
+        1,
+    )[0][1] == "b2"
     assert hybrid_score(1, 0) == 0.45
     assert rank("می روم", title="می‌روم") > 0
