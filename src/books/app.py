@@ -8,6 +8,7 @@ import streamlit as st
 from .config import load_settings
 from .db import BookRepository, Database
 from .enrichment import MetadataEnricher
+from .transfer import BookTransferService
 from .models import Book
 from .discovery import DiscoveryService, MergedDiscoveryItem
 from .providers.google_books import GoogleBooksProvider
@@ -21,6 +22,7 @@ PAGES = {
     "ویرایش کتاب": "ویرایش کتاب‌های ذخیره‌شده",
     "حذف کتاب": "حذف امن کتاب و بررسی Duplicate",
     "برچسب و قفسه": "علاقه‌مندی، برچسب و قفسه‌های شخصی",
+    "انتقال داده": "Import و Export امن کتابخانه",
     "مطالعه": "پیگیری وضعیت و پیشرفت مطالعه",
     "یادداشت‌ها": "یادداشت‌ها و نقل‌قول‌های شخصی",
     "تنظیمات": "تنظیمات برنامه و داده‌ها",
@@ -459,6 +461,46 @@ def render_organization() -> None:
 
 
 
+def render_transfer() -> None:
+    settings = load_settings()
+    repository = BookRepository(Database(settings.db_path))
+    repository.db.migrate()
+    transfer = BookTransferService(repository)
+
+    st.subheader("Export")
+    st.download_button(
+        "دریافت JSON",
+        data=transfer.export_json(),
+        file_name="books-export.json",
+        mime="application/json",
+    )
+    st.download_button(
+        "دریافت CSV",
+        data=transfer.export_csv(),
+        file_name="books-export.csv",
+        mime="text/csv",
+    )
+
+    st.subheader("Import")
+    uploaded = st.file_uploader(
+        "فایل JSON یا CSV را انتخاب کنید",
+        type=("json", "csv"),
+        accept_multiple_files=False,
+    )
+    if uploaded is not None and st.button("Import در حالت Merge", type="primary"):
+        try:
+            payload = uploaded.getvalue()
+            if uploaded.name.lower().endswith(".json"):
+                count = transfer.import_json(payload.decode("utf-8-sig"))
+            else:
+                count = transfer.import_csv(payload.decode("utf-8-sig"))
+        except (UnicodeDecodeError, ValueError, KeyError, TypeError) as exc:
+            st.error(f"Import ناموفق بود: {exc}")
+        else:
+            st.success(f"{count} کتاب جدید وارد شد؛ رکوردهای موجود overwrite نشدند.")
+
+
+
 def render_reading_status() -> None:
     settings = load_settings()
     repository = BookRepository(Database(settings.db_path))
@@ -786,6 +828,8 @@ def render_page(page: str) -> None:
         render_personal_data()
     elif page == "برچسب و قفسه":
         render_organization()
+    elif page == "انتقال داده":
+        render_transfer()
     else:
         settings = load_settings()
         st.info("تنظیمات برنامه در Issueهای مرتبط تکمیل می‌شود.")
