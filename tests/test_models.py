@@ -10,6 +10,14 @@ def test_persian_normalization_preserves_display_separately():
     assert normalize_text("سال ۱۴۰۲") == "سال 1402"
 
 
+def test_book_keeps_original_display_text_alongside_canonical_values():
+    book = Book(title="  كتاب‌ نمونه  ", authors=("  نویسنده‌ٔ اول  ",))
+    assert book.display_title == "كتاب‌ نمونه"
+    assert book.display_authors == ("نویسنده‌ٔ اول",)
+    assert book.title == "کتاب نمونه"
+    assert book.authors == ("نویسنده اول",)
+
+
 def test_isbn_normalization_and_validation():
     assert normalize_isbn("978-0-306-40615-7") == "9780306406157"
     assert validate_isbn13("9780306406157")
