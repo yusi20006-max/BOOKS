@@ -28,7 +28,7 @@ class SemanticLibraryService:
             docs.append((r["id"]," ".join(parts)))
         return docs
     def rebuild(self)->int:
-        with self.db.connect() as conn: store=VectorStore(conn); count=0
+        count=0
         for item_id,text in self._documents():
             with self.db.connect() as conn: VectorStore(conn).put(item_id,text,self.provider.embed(text))
             count+=1
@@ -36,10 +36,12 @@ class SemanticLibraryService:
     def search(self,query:str,limit:int=10,lexical_weight:float=.45)->list[SearchResult]:
         if not query.strip(): return []
         documents=dict(self._documents()); qv=self.provider.embed(query)
+        with self.db.connect() as conn:
+            titles={r["id"]:r["title"] for r in conn.execute("SELECT id,title FROM books") }
         with self.db.connect() as conn: semantic_rows=VectorStore(conn).search(qv,max(limit*4,limit))
         results=[]
         for semantic_value,item_id,_ in semantic_rows:
-            text=documents.get(item_id,""); title=text.split(" ",1)[0] if text else ""
+            text=documents.get(item_id,""); title=titles.get(item_id,"")
             lexical=rank(query,title,())/130
             results.append(SearchResult(item_id,title,lexical,semantic_value,hybrid_score(lexical,semantic_value,lexical_weight)))
         return sorted(results,key=lambda x:(x.score,x.book_id),reverse=True)[:limit]
