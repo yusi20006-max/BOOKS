@@ -36,7 +36,17 @@ jobs:
           gh api --method POST "repos/$GITHUB_REPOSITORY/issues/40/comments" \
             -f body="$(cat "$RUNNER_TEMP/ruff.log")"
       - name: Tests
-        run: python -m pytest -q
+        run: |
+          set -o pipefail
+          python -m pytest -q 2>&1 | tee "$RUNNER_TEMP/pytest.log"
+
+      - name: Report test diagnostics
+        if: failure() && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/40/comments" \
+            -f body="$(cat "$RUNNER_TEMP/pytest.log")"
       - name: Offline smoke
         env:
                     BOOKS_DB_PATH: ${{ runner.temp }}/books.sqlite3
