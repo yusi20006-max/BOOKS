@@ -1,0 +1,21 @@
+services:
+  books:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      BOOKS_HOST: 0.0.0.0
+      BOOKS_PORT: 8501
+      BOOKS_DB_PATH: /data/books.sqlite3
+    volumes:
+      - books-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-m", "books.health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+volumes:
+  books-data:
