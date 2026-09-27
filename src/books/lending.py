@@ -38,3 +38,12 @@ def due_state(loan: Loan, today: date) -> str:
     if loan.due_on < today: return "overdue"
     if (loan.due_on - today).days <= 7: return "due_soon"
     return "active"
+
+
+@dataclass(frozen=True, slots=True)
+class LoanEvent:
+    loan_id: str
+    event: str
+    occurred_on: date
+    actor_id: str|None = None
+    notes: str|None = None
