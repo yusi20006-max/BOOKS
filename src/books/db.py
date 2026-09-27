@@ -3,15 +3,14 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any, ClassVar
 
 from .models import Book
 from .normalization import normalize_isbn, normalize_text
-
 
 class Database:
     """Small SQLite boundary with migrations and explicit transactions."""
