@@ -8,7 +8,7 @@ from books.models import Book
 
 def test_create_book_round_trips_and_prevents_duplicate_isbn(tmp_path):
     db = Database(tmp_path / "books.sqlite3")
-    assert db.migrate() == 1
+    assert db.migrate() == 7
     repository = BookRepository(db)
 
     book = Book(
