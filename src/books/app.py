@@ -7,6 +7,7 @@ import streamlit as st
 
 from .config import load_settings
 from .db import BookRepository, Database
+from .enrichment import MetadataEnricher
 from .models import Book
 from .discovery import DiscoveryService, MergedDiscoveryItem
 from .providers.google_books import GoogleBooksProvider
@@ -274,6 +275,27 @@ def render_edit_book() -> None:
         return
 
     book = row_to_book(row)
+
+    refresh = st.button("تکمیل metadata از منابع", key="refresh-metadata")
+    if refresh:
+        settings = load_settings()
+        enricher = MetadataEnricher(
+            repository,
+            [
+                ("google_books", GoogleBooksProvider(settings)),
+                ("open_library", OpenLibraryProvider(settings)),
+            ],
+        )
+        with st.spinner("در حال تکمیل اطلاعات..."):
+            enriched = enricher.enrich(book, language="fa", force_refresh=True)
+        try:
+            repository.update_book(selected_id, enriched)
+        except sqlite3.IntegrityError:
+            st.error("تکمیل metadata باعث ایجاد Duplicate شد و ذخیره نشد.")
+        else:
+            book = enriched
+            st.success("metadata با fallback و refresh به‌روزرسانی شد.")
+
     with st.form("edit-library-book"):
         title = st.text_input("عنوان", value=book.title)
         original_title = st.text_input("عنوان اصلی", value=book.original_title or "")
