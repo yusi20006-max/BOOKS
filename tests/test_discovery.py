@@ -107,7 +107,7 @@ def test_merge_results_matches_normalized_title_and_author_without_isbn():
 
     merged = DiscoveryService.merge_results(response)
 
-    assert len(merged) == 2
+    assert len(merged) == 1
     assert merged[0].matched_by == ("title", "author")
     assert merged[0].book.pages == 96
 
@@ -134,8 +134,7 @@ def test_merge_results_does_not_collapse_different_translations_without_isbn():
 
     merged = DiscoveryService.merge_results(response)
 
-    assert len(merged) == 1
-    assert merged[0].confidence == 0.95
+    assert len(merged) == 2
 
 
 def test_search_merged_exposes_normalized_candidates():
