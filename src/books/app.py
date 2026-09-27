@@ -996,8 +996,8 @@ def render_reading_journal() -> None:
 
 def render_knowledge_base() -> None:
     settings = load_settings()
+    from .knowledge import KnowledgeNode
     from .knowledge_store import KnowledgeStore
-    from .knowledge import KnowledgeEdge, KnowledgeNode
     store = KnowledgeStore(Database(settings.db_path)); store.db.migrate()
     st.subheader("دانش شخصی، نقل‌قول و مفاهیم")
     query = st.text_input("جستجوی یکپارچه در یادداشت‌ها، نقل‌قول‌ها و مفاهیم", key="knowledge-search")
