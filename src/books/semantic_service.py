@@ -41,7 +41,7 @@ class SemanticLibraryService:
         with self.db.connect() as conn: semantic_rows=VectorStore(conn).search(qv,max(limit*4,limit))
         results=[]
         for semantic_value,item_id,_ in semantic_rows:
-            text=documents.get(item_id,""); title=titles.get(item_id,"")
+            title=titles.get(item_id,"")
             lexical=rank(query,title,())/130
             results.append(SearchResult(item_id,title,lexical,semantic_value,hybrid_score(lexical,semantic_value,lexical_weight)))
         return sorted(results,key=lambda x:(x.score,x.book_id),reverse=True)[:limit]
