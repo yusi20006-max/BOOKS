@@ -1,13 +1,16 @@
 from __future__ import annotations
-from collections import OrderedDict
-from dataclasses import dataclass
-from time import monotonic
+
 import logging
+from collections import OrderedDict
+from dataclasses import dataclass, field
+from time import monotonic
+
 
 @dataclass(slots=True)
 class TTLCache:
- capacity:int=256; ttl:float=60.0
- def __post_init__(self): self.data=OrderedDict()
+ capacity: int = 256
+ ttl: float = 60.0
+ data: OrderedDict = field(default_factory=OrderedDict, init=False, repr=False)
  def get(self,key):
   item=self.data.get(key)
   if item is None: return None

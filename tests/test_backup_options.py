@@ -1,6 +1,9 @@
-from datetime import datetime,timezone
+from datetime import datetime, timezone
+
 import pytest
-from books.backup_options import BackupSchedule,encrypt_backup,decrypt_backup
+
+from books.backup_options import BackupSchedule, decrypt_backup, encrypt_backup
+
 
 def test_schedule():
  s=BackupSchedule(24); assert s.next_run(datetime(2026,1,1,tzinfo=timezone.utc)).hour==0

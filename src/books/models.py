@@ -80,7 +80,7 @@ def _clean_values(values: tuple[str, ...] | list[str]) -> tuple[str, ...]:
 
 
 def _clean_people(values: tuple[str, ...] | list[str]) -> tuple[str, ...]:
-    return _clean_values(values)
+    return tuple(value.replace("\u200c", " ") for value in _clean_values(values))
 
 
 def _display_text(value: str | None) -> str:

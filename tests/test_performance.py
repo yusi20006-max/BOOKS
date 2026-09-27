@@ -1,4 +1,5 @@
-from books.performance import TTLCache,JobQueue,load_test_plan
+from books.performance import JobQueue, TTLCache, load_test_plan
+
 
 def test_cache_and_jobs():
  c=TTLCache(1,60); c.set("a",1); assert c.get("a")==1; c.set("b",2); assert c.get("a") is None

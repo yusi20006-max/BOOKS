@@ -1,5 +1,7 @@
 from dataclasses import dataclass
-from .normalization import normalize_text, normalize_isbn
+
+from .normalization import normalize_text
+
 
 @dataclass(frozen=True, slots=True)
 class Work:

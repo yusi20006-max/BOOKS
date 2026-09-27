@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+
 @dataclass(frozen=True,slots=True)
 class UXContract:
  rtl:bool=True; mobile:bool=True; keyboard:bool=True; screen_reader:bool=True; consistent_errors:bool=True; recovery_actions:bool=True

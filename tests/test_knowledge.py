@@ -1,4 +1,5 @@
-from books.knowledge import Quote,Note,KnowledgeNode,KnowledgeEdge,knowledge_search
+from books.knowledge import KnowledgeEdge, KnowledgeNode, Note, Quote, knowledge_search
+
 
 def test_quote_note_and_normalization():
  q=Quote("q","b","  این یک نقل‌قول است  ",12); n=Note("n","b"," یادداشت ")

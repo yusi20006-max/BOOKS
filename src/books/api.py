@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 from time import monotonic
 from typing import Any
+
 from .db import BookRepository
+
 
 @dataclass(slots=True)
 class RateLimiter:

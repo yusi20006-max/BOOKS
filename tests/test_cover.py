@@ -1,5 +1,7 @@
 import pytest
+
 from books.cover import CoverMetadata
+
 
 def test_cover_retains_edition_identity():
     c=CoverMetadata(" https://example.test/a.jpg ","fa-shamloo","fa")

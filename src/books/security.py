@@ -1,8 +1,10 @@
 from __future__ import annotations
-import os,re
+
+import os
+import re
 from dataclasses import dataclass
 
-_SECRET_PATTERNS=(re.compile(r"(?i)(token|secret|password|api[_-]?key)(\\s*[=:]\\s*)[^\\s,]+"),)
+_SECRET_PATTERNS=(re.compile(r"(?i)(token|secret|password|api[_-]?key)(\s*[=:]\s*)[^\s,]+"),)
 def redact_secrets(text:str)->str:
  out=text
  for p in _SECRET_PATTERNS: out=p.sub(lambda m:m.group(1)+m.group(2)+"[REDACTED]",out)

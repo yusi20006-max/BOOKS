@@ -1,8 +1,12 @@
 from __future__ import annotations
-import csv,io,json
+
+import csv
+import io
+import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
-from typing import Iterable
+
 
 @dataclass(frozen=True,slots=True)
 class ReadingMetric:
@@ -21,14 +25,16 @@ def report_csv(rows:Iterable[dict])->str:
  out=io.StringIO(); w=csv.DictWriter(out,fieldnames=fields); w.writeheader(); w.writerows(rows); return out.getvalue()
 
 def report_excel(rows:Iterable[dict])->bytes:
- try: from openpyxl import Workbook
+ try:
+  from openpyxl import Workbook
  except ImportError as exc: raise RuntimeError("openpyxl is required for Excel reports") from exc
  rows=list(rows); wb=Workbook(); ws=wb.active; fields=sorted({k for row in rows for k in row}); ws.append(fields)
  for row in rows: ws.append([row.get(k) for k in fields])
  out=io.BytesIO(); wb.save(out); return out.getvalue()
 
 def report_pdf(rows:Iterable[dict])->bytes:
- try: from reportlab.pdfgen.canvas import Canvas
+ try:
+  from reportlab.pdfgen.canvas import Canvas
  except ImportError as exc: raise RuntimeError("reportlab is required for PDF reports") from exc
  out=io.BytesIO(); c=Canvas(out); y=800
  for row in rows:

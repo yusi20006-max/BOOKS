@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+
 
 class ChangeType(str,Enum): CREATE="create"; UPDATE="update"; DELETE="delete"
 @dataclass(frozen=True,slots=True)

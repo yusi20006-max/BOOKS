@@ -1,5 +1,6 @@
 from datetime import datetime
 
+
 def gregorian_to_jalali(gregorian_date: datetime) -> tuple[int,int,int]:
     gy,gm,gd=gregorian_date.year,gregorian_date.month,gregorian_date.day
     g_d_m=[0,31,59,90,120,151,181,212,243,273,304,334]

@@ -1,5 +1,7 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol, Sequence
+from typing import Protocol
+
 
 class AIProvider(Protocol):
     name: str
@@ -18,7 +20,7 @@ class FailoverAI:
         errors=[]
         for provider in self.providers:
             try: return provider.complete(prompt)
-            except Exception as exc: errors.append(f"{provider.name}: {exc}")
+            except RuntimeError as exc: errors.append(f"{provider.name}: {exc}")
         raise RuntimeError("all AI providers failed: " + "; ".join(errors))
 
 def book_assistant(provider: AIProvider, action: str, title: str, context: str = "") -> str:

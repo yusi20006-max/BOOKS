@@ -1,6 +1,8 @@
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
+
 from .normalization import normalize_isbn, normalize_text
+
 
 @dataclass(frozen=True, slots=True)
 class OCRMetadata:
@@ -11,7 +13,7 @@ class OCRMetadata:
     raw_text: str
 
 def ocr_metadata(text: str) -> OCRMetadata:
-    clean=normalize_text(text)
+    clean="\n".join(normalize_text(line) for line in text.splitlines())
     isbn=normalize_isbn(re.search(r"(?:97[89][\d\s\-\u200c]{10,20}|[\d\s\-\u200c]{9,18}[Xx])",clean).group()) if re.search(r"(?:97[89][\d\s\-\u200c]{10,20}|[\d\s\-\u200c]{9,18}[Xx])",clean) else None
     lines=[x.strip() for x in clean.splitlines() if x.strip()]
     title=lines[0] if lines else None
