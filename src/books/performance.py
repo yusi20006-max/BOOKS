@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import logging
 from collections import OrderedDict
 from dataclasses import dataclass
 from time import monotonic
-
-import logging
 
 
 @dataclass(slots=True)
