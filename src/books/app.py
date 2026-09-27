@@ -306,6 +306,9 @@ def render_library() -> None:
     with filter_cols[3]:
         selected_language = st.selectbox("زبان", ["همه"] + languages)
 
+    year_options = ["همه"] + [str(year) for year in years]
+    selected_year = st.selectbox("سال انتشار", year_options)
+
     sort_cols = st.columns(2)
     with sort_cols[0]:
         sort_label = st.selectbox(
@@ -335,12 +338,22 @@ def render_library() -> None:
             rows = [r for r in rows if r["publisher"] == selected_publisher]
         if selected_language != "همه":
             rows = [r for r in rows if r["language"] == selected_language]
+        if selected_year != "همه":
+            rows = [r for r in rows if str(r["publication_year"]) == selected_year]
+        rows.sort(
+            key=lambda r: (
+                r[sort_map[sort_label]] is None,
+                r[sort_map[sort_label]] or "",
+            ),
+            reverse=descending,
+        )
     else:
         rows = repository.filter_books(
             genre=None if selected_genre == "همه" else selected_genre,
             author=None if selected_author == "همه" else selected_author,
             publisher=None if selected_publisher == "همه" else selected_publisher,
             language=None if selected_language == "همه" else selected_language,
+            publication_year=None if selected_year == "همه" else int(selected_year),
             sort_by=sort_map[sort_label],
             descending=descending,
             limit=1000,
