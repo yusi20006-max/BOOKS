@@ -5,8 +5,9 @@ import sqlite3
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import Iterator, Mapping, Any
+from typing import Any, ClassVar
 
 from .models import Book
 from .normalization import normalize_isbn, normalize_text
@@ -72,7 +73,7 @@ def transaction(db: Database) -> Iterator[sqlite3.Connection]:
 class BookRepository:
     """Persistence operations for the initial Book storage contract."""
 
-    _JSON_DEFAULTS = {
+    _JSON_DEFAULTS: ClassVar[dict[str, str]] = {
         "authors_json": "[]",
         "translators_json": "[]",
         "genres_json": "[]",
@@ -203,7 +204,8 @@ class BookRepository:
             raise ValueError("offset must be non-negative")
 
         pattern = f"%{normalized}%"
-        spaced_pattern = f"%{normalized.replace(chr(8204), " ")}%"
+        spaced_query = normalized.replace(chr(8204), " ")
+        spaced_pattern = f"%{spaced_query}%"
         isbn_normalized = normalize_isbn(normalized) or normalized
         isbn_pattern = f"%{isbn_normalized}%"
         columns = (
@@ -284,7 +286,7 @@ class BookRepository:
                 (*params, limit, offset),
             ).fetchall()
 
-    READING_STATUSES = {
+    READING_STATUSES: ClassVar[dict[str, str]] = {
         "unread": "نخوانده",
         "reading": "در حال مطالعه",
         "finished": "تمام‌شده",
