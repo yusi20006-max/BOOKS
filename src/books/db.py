@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
 import sqlite3
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Mapping, Any
+
+from .models import Book
 
 
 class Database:
@@ -105,6 +109,39 @@ class BookRepository:
                 tuple(values),
             )
         return book_id
+
+    def create_book(self, book: Book, book_id: str | None = None) -> str:
+        identifier = book_id or str(uuid.uuid4())
+        payload = {
+            "id": identifier,
+            "title": book.title,
+            "original_title": book.original_title,
+            "authors_json": json.dumps(book.authors, ensure_ascii=False),
+            "translators_json": json.dumps(book.translators, ensure_ascii=False),
+            "publisher": book.publisher,
+            "pages": book.pages,
+            "publication_year": book.publication_year,
+            "isbn10": book.isbn10,
+            "isbn13": book.isbn13,
+            "language": book.language,
+            "genres_json": json.dumps(book.genres, ensure_ascii=False),
+            "subjects_json": json.dumps(book.subjects, ensure_ascii=False),
+            "summary": book.summary,
+            "cover_url": book.cover_url,
+            "source_ids_json": json.dumps(dict(book.source_ids), ensure_ascii=False),
+            "notes": book.notes,
+        }
+        return self.create(payload)
+
+    def get_by_isbn(self, isbn: str) -> sqlite3.Row | None:
+        normalized = str(isbn).strip()
+        if not normalized:
+            return None
+        with self.db.connect() as conn:
+            return conn.execute(
+                "SELECT * FROM books WHERE isbn10 = ? OR isbn13 = ? LIMIT 1",
+                (normalized, normalized),
+            ).fetchone()
 
     def get(self, book_id: str) -> sqlite3.Row | None:
         with self.db.connect() as conn:
