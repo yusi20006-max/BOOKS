@@ -5,6 +5,7 @@ import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+
 @dataclass(frozen=True,slots=True)
 class BackupSchedule:
  interval_hours:int=24
