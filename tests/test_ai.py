@@ -1,4 +1,10 @@
-from books.ai import FailoverAI, book_assistant, personalized_reading_plan, summarize_book, summarize_chapter
+from books.ai import (
+    FailoverAI,
+    book_assistant,
+    personalized_reading_plan,
+    summarize_book,
+    summarize_chapter,
+)
 
 
 class P:
