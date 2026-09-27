@@ -976,7 +976,7 @@ def render_ocr() -> None:
     publisher = st.text_input("ناشر اصلاح‌شده", value=str(draft["publisher"]))
     isbn = st.text_input("ISBN اصلاح‌شده", value=str(draft["isbn"]))
     if st.button("ذخیره نتیجه OCR", type="primary"):
-        book = Book(title=title, publisher=publisher or None, isbn13=isbn or None)
+        book = Book(title=title, publisher=publisher or None, isbn13=isbn if len(isbn.replace("-", "")) == 13 else None, isbn10=isbn if len(isbn.replace("-", "")) == 10 else None)
         repository.create_book(book)
         st.success("نتیجه OCR پس از اصلاح در SQLite ذخیره شد.")
 
