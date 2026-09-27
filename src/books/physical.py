@@ -29,3 +29,14 @@ class PhysicalCopy:
     def __post_init__(self):
         if self.status not in {"available","on_loan","lost"}: raise ValueError("invalid copy status")
         if self.condition not in {"new","good","fair","poor","damaged"}: raise ValueError("invalid copy condition")
+
+
+import hashlib
+
+def make_internal_qr_payload(copy_id: str) -> str:
+    if not copy_id.strip(): raise ValueError("copy id is required")
+    return "books://copy/" + copy_id.strip()
+
+def location_scan_token(location_id: str) -> str:
+    if not location_id.strip(): raise ValueError("location id is required")
+    return "books://location/" + location_id.strip()
