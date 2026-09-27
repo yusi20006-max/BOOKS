@@ -7,7 +7,6 @@ from typing import Protocol
 
 from .models import Book
 
-
 logger = logging.getLogger(__name__)
 
 
