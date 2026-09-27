@@ -1,4 +1,5 @@
 import sqlite3
+
 from books.semantic import HashEmbeddingProvider, VectorStore, cosine, hybrid_score, recommend_similar, semantic_search
 
 
