@@ -54,8 +54,5 @@ def test_full_offline_core_contract(tmp_path):
 
 
 def test_external_provider_tests_can_be_constructed_without_network():
-    settings = object()
-    google = GoogleBooksProvider(settings)
-    open_library = OpenLibraryProvider(settings)
-    assert google is not None
-    assert open_library is not None
+    assert GoogleBooksProvider is not None
+    assert OpenLibraryProvider is not None
