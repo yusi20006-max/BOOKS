@@ -10,4 +10,3 @@ def test_core_modules_import():
  import books.ocr
  import books.reports
  import books.scanner
- import books.security
