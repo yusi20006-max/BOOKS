@@ -629,3 +629,69 @@ class BookRepository:
     def list_loans(self, limit: int = 100) -> list[sqlite3.Row]:
         with self.db.connect() as conn:
             return conn.execute("SELECT * FROM loans ORDER BY loaned_on DESC LIMIT ?", (limit,)).fetchall()
+
+
+    def add_audiobook(
+        self,
+        audiobook_id: str,
+        book_id: str,
+        path: str,
+        audio_format: str,
+        duration_seconds: int,
+    ) -> str:
+        if not path.strip():
+            raise ValueError("audio path is required")
+        if duration_seconds < 0:
+            raise ValueError("audio duration must be non-negative")
+        if not audio_format.strip():
+            raise ValueError("audio format is required")
+        with transaction(self.db) as conn:
+            if conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone() is None:
+                raise ValueError("book not found")
+            conn.execute(
+                """INSERT INTO audiobooks
+                   (id, book_id, path, format, duration_seconds)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (audiobook_id, book_id, path.strip(), audio_format.lower().strip(), duration_seconds),
+            )
+        return audiobook_id
+
+    def get_audiobook(self, audiobook_id: str) -> sqlite3.Row | None:
+        with self.db.connect() as conn:
+            return conn.execute(
+                "SELECT * FROM audiobooks WHERE id = ?", (audiobook_id,)
+            ).fetchone()
+
+    def list_audiobooks(self, book_id: str) -> list[sqlite3.Row]:
+        with self.db.connect() as conn:
+            return conn.execute(
+                "SELECT * FROM audiobooks WHERE book_id = ? ORDER BY id", (book_id,)
+            ).fetchall()
+
+    def update_audiobook_progress(
+        self,
+        audiobook_id: str,
+        *,
+        position_seconds: int,
+        speed: float = 1.0,
+    ) -> bool:
+        if position_seconds < 0:
+            raise ValueError("audio position must be non-negative")
+        if speed <= 0:
+            raise ValueError("audio speed must be positive")
+        with transaction(self.db) as conn:
+            row = conn.execute(
+                "SELECT duration_seconds FROM audiobooks WHERE id = ?",
+                (audiobook_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError("audiobook not found")
+            if position_seconds > row["duration_seconds"]:
+                raise ValueError("audio position exceeds duration")
+            result = conn.execute(
+                """UPDATE audiobooks
+                   SET position_seconds = ?, speed = ?, updated_at = CURRENT_TIMESTAMP
+                   WHERE id = ?""",
+                (position_seconds, speed, audiobook_id),
+            )
+            return result.rowcount == 1
