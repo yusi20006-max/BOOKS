@@ -301,6 +301,36 @@ class BookRepository:
             )
             return result.rowcount == 1
 
+    def start_reading(self, book_id: str) -> str:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        with transaction(self.db) as conn:
+            result = conn.execute(
+                "UPDATE books SET reading_started_at = ?, updated_at = ? WHERE id = ?",
+                (timestamp, timestamp, book_id),
+            )
+            if result.rowcount != 1:
+                raise ValueError("book not found")
+        return timestamp
+
+    def finish_reading(self, book_id: str) -> str:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        with transaction(self.db) as conn:
+            row = conn.execute(
+                "SELECT reading_started_at FROM books WHERE id = ?",
+                (book_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError("book not found")
+            if not row["reading_started_at"]:
+                raise ValueError("reading must be started first")
+            result = conn.execute(
+                "UPDATE books SET reading_finished_at = ?, updated_at = ? WHERE id = ?",
+                (timestamp, timestamp, book_id),
+            )
+            if result.rowcount != 1:
+                raise ValueError("book not found")
+        return timestamp
+
     def update_reading_progress(self, book_id: str, current_page: int) -> int:
         if current_page < 0:
             raise ValueError("current page must be non-negative")

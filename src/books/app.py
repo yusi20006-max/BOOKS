@@ -388,6 +388,25 @@ def render_reading_status() -> None:
         else:
             st.error("کتاب پیدا نشد.")
 
+    if row["reading_started_at"]:
+        st.caption(f"شروع مطالعه: {row['reading_started_at']}")
+        if row["reading_finished_at"]:
+            st.caption(f"پایان مطالعه: {row['reading_finished_at']}")
+        elif st.button("ثبت پایان مطالعه", type="primary", key="finish-reading"):
+            try:
+                timestamp = repository.finish_reading(selected_id)
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.success(f"پایان مطالعه ثبت شد: {timestamp}")
+    elif st.button("شروع مطالعه", type="primary", key="start-reading"):
+        try:
+            timestamp = repository.start_reading(selected_id)
+        except ValueError as exc:
+            st.error(str(exc))
+        else:
+            st.success(f"شروع مطالعه ثبت شد: {timestamp}")
+
     total_pages = row["pages"]
     if total_pages:
         current_page = st.number_input(
