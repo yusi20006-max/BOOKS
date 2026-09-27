@@ -500,6 +500,49 @@ class BookRepository:
                 (provider, cache_key, language, payload_json, timestamp),
             )
 
+    def reading_statistics(self) -> dict[str, Any]:
+        with self.db.connect() as conn:
+            total = conn.execute("SELECT COUNT(*) AS count FROM books").fetchone()["count"]
+            pages = conn.execute(
+                "SELECT COALESCE(SUM(pages), 0) AS total, "
+                "COALESCE(SUM(reading_current_page), 0) AS current FROM books"
+            ).fetchone()
+            status_rows = conn.execute(
+                "SELECT reading_status, COUNT(*) AS count "
+                "FROM books GROUP BY reading_status ORDER BY reading_status"
+            ).fetchall()
+            author_rows = conn.execute(
+                "SELECT authors_json FROM books"
+            ).fetchall()
+            progress_rows = conn.execute(
+                """SELECT substr(updated_at, 1, 7) AS month,
+                          ROUND(AVG(reading_progress), 1) AS progress
+                   FROM books
+                   GROUP BY month
+                   ORDER BY month"""
+            ).fetchall()
+
+        authors: set[str] = set()
+        for row in author_rows:
+            authors.update(
+                normalize_text(author).casefold()
+                for author in json.loads(row["authors_json"] or "[]")
+                if normalize_text(author)
+            )
+
+        return {
+            "book_count": total,
+            "total_pages": pages["total"],
+            "current_pages": pages["current"],
+            "authors_count": len(authors),
+            "status_counts": {
+                row["reading_status"]: row["count"] for row in status_rows
+            },
+            "progress_trend": {
+                row["month"]: row["progress"] for row in progress_rows
+            },
+        }
+
     def find_duplicates(self, book: Book, exclude_id: str | None = None) -> list[sqlite3.Row]:
         candidates: list[sqlite3.Row] = []
         with self.db.connect() as conn:
