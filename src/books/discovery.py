@@ -234,6 +234,11 @@ def _match_confidence(left: Book, right: Book) -> tuple[float, tuple[str, ...]]:
     if left_title != right_title:
         return 0.0, ()
 
+    left_translators = {_person_key(value) for value in left.translators if _person_key(value)}
+    right_translators = {_person_key(value) for value in right.translators if _person_key(value)}
+    if left_translators and right_translators and not left_translators & right_translators:
+        return 0.0, ()
+
     left_authors = {_person_key(value) for value in left.authors if _person_key(value)}
     right_authors = {_person_key(value) for value in right.authors if _person_key(value)}
     if left_authors and right_authors and left_authors & right_authors:
