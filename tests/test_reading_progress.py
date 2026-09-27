@@ -6,7 +6,7 @@ from books.models import Book
 
 def test_reading_progress_is_calculated_from_current_page(tmp_path):
     db = Database(tmp_path / "books.sqlite3")
-    assert db.migrate() == 3
+    assert db.migrate() == 7
     repository = BookRepository(db)
     book_id = repository.create_book(Book(title="کتاب", pages=200))
 
