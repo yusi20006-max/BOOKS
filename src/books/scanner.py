@@ -7,7 +7,7 @@ from typing import Any, Callable
 from .normalization import normalize_isbn, validate_isbn10, validate_isbn13
 
 
-_ISBN_RE = re.compile(r"(?<!\d)(?:97[89][\s-]?[0-9][\s-]?){10}|(?<!\d)[0-9]{9}[0-9X](?!\d)", re.IGNORECASE)
+_ISBN_RE = re.compile(r"(?<!\d)(?:97[89]\d{10}|\d{9}[0-9X])(?!\d)", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,7 +49,8 @@ class BarcodeScanner:
         ):
             return normalized
 
-        for match in _ISBN_RE.finditer(text):
+        compact_text = normalize_isbn(text) or ""
+        for match in _ISBN_RE.finditer(compact_text):
             candidate = normalize_isbn(match.group(0))
             if candidate and (
                 (len(candidate) == 10 and validate_isbn10(candidate))
