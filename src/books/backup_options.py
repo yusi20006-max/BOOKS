@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -34,7 +36,6 @@ class BackupScheduler:
     """Execute periodic backups in a background thread with durable last-run state."""
 
     def __init__(self, service, schedule: BackupSchedule, destination: str | Path):
-        import json
         import threading
         self.service = service
         self.schedule = schedule
@@ -68,6 +69,5 @@ class BackupScheduler:
             self._thread.join(timeout=2)
 
     def _loop(self) -> None:
-        import time
         while not self._stop.wait(self.schedule.interval_hours * 3600):
             self.run_once()
