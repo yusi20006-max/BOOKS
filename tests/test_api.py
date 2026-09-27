@@ -1,6 +1,6 @@
 import pytest
 
-from books.api import BooksAPI,RateLimiter,APIError
+from books.api import APIError, BooksAPI, RateLimiter
 
 
 class R:
