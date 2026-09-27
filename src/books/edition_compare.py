@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+
 from .catalog import Edition
 from .normalization import normalize_isbn, normalize_text
 
