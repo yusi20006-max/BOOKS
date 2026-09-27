@@ -46,15 +46,20 @@ class Database:
                 row["version"]
                 for row in conn.execute("SELECT version FROM schema_migrations")
             }
+            migrations_by_version: dict[int, list[Path]] = {}
+            for migration in migrations_dir.glob("[0-9][0-9][0-9]_*.sql"):
+                migrations_by_version.setdefault(int(migration.name[:3]), []).append(migration)
+
             count = 0
-            for migration in sorted(migrations_dir.glob("[0-9][0-9][0-9]_*.sql")):
-                version = int(migration.name[:3])
+            for version in sorted(migrations_by_version):
                 if version in applied:
                     continue
-                conn.executescript(migration.read_text(encoding="utf-8"))
+                migrations = sorted(migrations_by_version[version])
+                for migration in migrations:
+                    conn.executescript(migration.read_text(encoding="utf-8"))
                 conn.execute(
                     "INSERT INTO schema_migrations(version, name) VALUES (?, ?)",
-                    (version, migration.name),
+                    (version, ", ".join(m.name for m in migrations)),
                 )
                 count += 1
         return count
