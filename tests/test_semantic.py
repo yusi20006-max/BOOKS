@@ -1,6 +1,13 @@
 import sqlite3
 
-from books.semantic import HashEmbeddingProvider, VectorStore, cosine, hybrid_score, recommend_similar, semantic_search
+from books.semantic import (
+    HashEmbeddingProvider,
+    VectorStore,
+    cosine,
+    hybrid_score,
+    recommend_similar,
+    semantic_search,
+)
 
 
 def test_embedding_is_normalized_and_deterministic():
