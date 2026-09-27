@@ -1,8 +1,9 @@
 from __future__ import annotations
+
 import csv,io,json
 from dataclasses import dataclass
 from datetime import date
-from typing import Iterable
+from collections.abc import Iterable
 
 @dataclass(frozen=True,slots=True)
 class ReadingMetric:
