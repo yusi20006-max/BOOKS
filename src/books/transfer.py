@@ -53,6 +53,8 @@ class BookTransferService:
         return self._import_snapshot(data)
 
     def import_csv(self, payload: str) -> int:
+        if len(payload.encode("utf-8")) > 10 * 1024 * 1024:
+            raise ValueError("import payload exceeds 10 MiB")
         stream = io.StringIO(payload, newline="")
         reader = csv.DictReader(stream)
         if tuple(reader.fieldnames or ()) != self.CSV_FIELDS:
