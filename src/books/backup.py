@@ -75,11 +75,14 @@ class BackupService:
 
     @staticmethod
     def _validate_file(path: Path) -> None:
-        conn = sqlite3.connect(path)
         try:
+            conn = sqlite3.connect(path)
             integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
             if integrity != "ok":
                 raise ValueError("SQLite integrity check failed")
+        except sqlite3.DatabaseError as exc:
+            raise ValueError("invalid SQLite backup") from exc
+        finally:
             tables = {
                 row[0]
                 for row in conn.execute(
@@ -89,5 +92,4 @@ class BackupService:
             required = {"books", "schema_migrations"}
             if not required.issubset(tables):
                 raise ValueError("backup is not a valid BOOKS database")
-        finally:
             conn.close()
