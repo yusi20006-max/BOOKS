@@ -1,5 +1,6 @@
 from books.sync import *
 
+
 def test_change_and_conflict():
  a=make_change("book","1","update",{"title":"الف"},2); b=make_change("book","1","update",{"title":"ب"},2); c=detect_conflict(a,b); assert c and resolve_conflict(c,"local") is a
 def test_queue_and_settings():
