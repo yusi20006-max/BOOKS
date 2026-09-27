@@ -5,7 +5,14 @@ from dataclasses import dataclass
 
 import httpx
 
-from .ai import AIProvider, FailoverAI, book_assistant, personalized_reading_plan, summarize_book, summarize_chapter
+from .ai import (
+    AIProvider,
+    FailoverAI,
+    book_assistant,
+    personalized_reading_plan,
+    summarize_book,
+    summarize_chapter,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,9 +26,12 @@ class OpenAICompatibleProvider:
     def complete(self, prompt: str) -> str:
         headers={"Content-Type":"application/json"}
         if self.api_key: headers["Authorization"]=f"Bearer {self.api_key}"
-        response=httpx.post(self.base_url.rstrip("/")+"/chat/completions",json={"model":self.model,"messages":[{"role":"user","content":prompt}]},headers=headers,timeout=self.timeout)
-        response.raise_for_status()
-        data=response.json()
+        try:
+            response=httpx.post(self.base_url.rstrip("/")+"/chat/completions",json={"model":self.model,"messages":[{"role":"user","content":prompt}]},headers=headers,timeout=self.timeout)
+            response.raise_for_status()
+            data=response.json()
+        except httpx.HTTPError as exc:
+            raise RuntimeError("AI gateway request failed") from exc
         try: return str(data["choices"][0]["message"]["content"])
         except (KeyError,IndexError,TypeError) as exc: raise RuntimeError("AI provider returned an invalid response") from exc
 
