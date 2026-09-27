@@ -1,4 +1,6 @@
 import importlib
+import re
+from pathlib import Path
 
 from books import __version__
 
@@ -19,9 +21,6 @@ def test_core_modules_import():
 
 
 def test_packaging_version_is_single_source():
-    from pathlib import Path
-    import re
-
     pyproject = Path(__file__).parents[1] / "pyproject.toml"
     content = pyproject.read_text(encoding="utf-8")
     assert 'dynamic = ["version"]' in content
