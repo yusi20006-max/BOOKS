@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Protocol
 from .normalization import normalize_text
 
+
 class EmbeddingProvider(Protocol):
     dimensions: int
     def embed(self, text: str) -> tuple[float,...]: ...
@@ -31,12 +32,10 @@ class VectorStore:
     def __init__(self, connection: sqlite3.Connection): self.connection=connection
     def put(self, item_id: str, text: str, vector: tuple[float,...]) -> None:
         import json
-
         self.connection.execute("INSERT INTO embeddings(item_id,text,vector_json) VALUES(?,?,?) ON CONFLICT(item_id) DO UPDATE SET text=excluded.text,vector_json=excluded.vector_json",(item_id,text,json.dumps(vector)))
         self.connection.commit()
     def search(self, vector: tuple[float,...], limit: int=10):
         import json
-
         rows=self.connection.execute("SELECT item_id,text,vector_json FROM embeddings").fetchall()
         scored=[(cosine(vector,tuple(json.loads(r[2]))),r[0],r[1]) for r in rows]
         return sorted(scored,reverse=True)[:limit]
