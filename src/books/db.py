@@ -183,9 +183,10 @@ class BookRepository:
             clauses.append(f"{column} LIKE ?")
             params.append(pattern)
 
+        clauses_sql = " OR ".join(clauses)
         with self.db.connect() as conn:
             return conn.execute(
-                f"SELECT * FROM books WHERE {" OR ".join(clauses)} "
+                f"SELECT * FROM books WHERE {clauses_sql} "
                 "ORDER BY updated_at DESC, id LIMIT ? OFFSET ?",
                 (*params, limit, offset),
             ).fetchall()
