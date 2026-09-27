@@ -214,8 +214,9 @@ class BookTransferService:
         book_id = self.repository.create_book(book, str(row.get("id")) if row.get("id") else None)
         if row.get("reading_status"):
             self.repository.update_reading_status(book_id, str(row["reading_status"]))
-        if row.get("reading_current_page") not in (None, ""):
-            self.repository.update_reading_progress(book_id, int(row["reading_current_page"]))
+        current_page = row.get("reading_current_page")
+        if current_page not in (None, "", "0", 0) and row.get("pages") not in (None, "", 0, "0"):
+            self.repository.update_reading_progress(book_id, int(current_page))
         if row.get("reading_started_at"):
             with self.repository.db.connect() as conn:
                 conn.execute(
