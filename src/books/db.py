@@ -301,6 +301,32 @@ class BookRepository:
             )
             return result.rowcount == 1
 
+    def update_reading_progress(self, book_id: str, current_page: int) -> int:
+        if current_page < 0:
+            raise ValueError("current page must be non-negative")
+
+        with transaction(self.db) as conn:
+            row = conn.execute(
+                "SELECT pages FROM books WHERE id = ?",
+                (book_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError("book not found")
+            total_pages = row["pages"]
+            if total_pages is None or total_pages <= 0:
+                raise ValueError("total pages are required for progress")
+            if current_page > total_pages:
+                raise ValueError("current page cannot exceed total pages")
+
+            progress = round((current_page / total_pages) * 100)
+            conn.execute(
+                """UPDATE books
+                   SET reading_current_page = ?, reading_progress = ?, updated_at = ?
+                   WHERE id = ?""",
+                (current_page, progress, datetime.now(timezone.utc).isoformat(), book_id),
+            )
+            return progress
+
     def find_duplicates(self, book: Book, exclude_id: str | None = None) -> list[sqlite3.Row]:
         candidates: list[sqlite3.Row] = []
         with self.db.connect() as conn:
