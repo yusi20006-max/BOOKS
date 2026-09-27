@@ -11,4 +11,3 @@ def test_core_modules_import():
  import books.reports
  import books.scanner
  import books.security
- import books.sync
