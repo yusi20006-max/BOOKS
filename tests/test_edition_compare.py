@@ -1,6 +1,7 @@
 from books.catalog import Edition
 from books.edition_compare import compare_editions,is_duplicate_edition,deduplicate_editions
 
+
 def e(i,**kw): return Edition(i,kw.pop("work_id","w"),**kw)
 def test_isbn_and_work_matching():
     a=e("a",isbn13="9780306406157"); b=e("b",isbn13="9780306406157")
