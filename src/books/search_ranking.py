@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from .normalization import normalize_text
 
 def score(query: str, value: str, weight: int = 1) -> int:
