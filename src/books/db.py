@@ -389,6 +389,77 @@ class BookRepository:
                 (book_id, rating, note.strip(), quote.strip(), timestamp),
             )
 
+    def update_favorite(self, book_id: str, favorite: bool) -> None:
+        with transaction(self.db) as conn:
+            timestamp = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                """INSERT INTO book_personal(book_id, favorite, updated_at)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(book_id) DO UPDATE SET
+                       favorite = excluded.favorite,
+                       updated_at = excluded.updated_at""",
+                (book_id, int(favorite), timestamp),
+            )
+
+    def get_organization(self, book_id: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        with self.db.connect() as conn:
+            tags = conn.execute(
+                """SELECT t.name FROM tags t
+                   JOIN book_tags bt ON bt.tag_id = t.id
+                   WHERE bt.book_id = ? ORDER BY t.name""",
+                (book_id,),
+            ).fetchall()
+            shelves = conn.execute(
+                """SELECT s.name FROM shelves s
+                   JOIN book_shelves bs ON bs.shelf_id = s.id
+                   WHERE bs.book_id = ? ORDER BY s.name""",
+                (book_id,),
+            ).fetchall()
+        return (
+            tuple(row["name"] for row in tags),
+            tuple(row["name"] for row in shelves),
+        )
+
+    def set_organization(
+        self,
+        book_id: str,
+        *,
+        tags: tuple[str, ...],
+        shelves: tuple[str, ...],
+    ) -> None:
+        clean_tags = tuple(dict.fromkeys(normalize_text(value) for value in tags if normalize_text(value)))
+        clean_shelves = tuple(dict.fromkeys(normalize_text(value) for value in shelves if normalize_text(value)))
+        with transaction(self.db) as conn:
+            if conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone() is None:
+                raise ValueError("book not found")
+
+            conn.execute("DELETE FROM book_tags WHERE book_id = ?", (book_id,))
+            conn.execute("DELETE FROM book_shelves WHERE book_id = ?", (book_id,))
+
+            for name in clean_tags:
+                tag_id = str(uuid.uuid4())
+                conn.execute(
+                    "INSERT OR IGNORE INTO tags(id, name) VALUES (?, ?)",
+                    (tag_id, name),
+                )
+                row = conn.execute("SELECT id FROM tags WHERE name = ?", (name,)).fetchone()
+                conn.execute(
+                    "INSERT INTO book_tags(book_id, tag_id) VALUES (?, ?)",
+                    (book_id, row["id"]),
+                )
+
+            for name in clean_shelves:
+                shelf_id = str(uuid.uuid4())
+                conn.execute(
+                    "INSERT OR IGNORE INTO shelves(id, name) VALUES (?, ?)",
+                    (shelf_id, name),
+                )
+                row = conn.execute("SELECT id FROM shelves WHERE name = ?", (name,)).fetchone()
+                conn.execute(
+                    "INSERT INTO book_shelves(book_id, shelf_id) VALUES (?, ?)",
+                    (book_id, row["id"]),
+                )
+
     def find_duplicates(self, book: Book, exclude_id: str | None = None) -> list[sqlite3.Row]:
         candidates: list[sqlite3.Row] = []
         with self.db.connect() as conn:
