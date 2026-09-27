@@ -1,6 +1,7 @@
 from books.catalog import Edition, Translation
 from books.translation_views import group_by_translation, translation_view
 
+
 def test_translation_view_keeps_translation_identity():
     e=Edition("e","w",publisher=" ناشر ")
     v=translation_view(e,Translation("t","e"," فارسی ",("tr",)))
