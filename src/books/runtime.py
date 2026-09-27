@@ -57,9 +57,6 @@ def make_handler(runtime: Runtime):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 request = json.loads(self.rfile.read(length))
-                if request.get("method") != "tools/call":
-                    self._write(400, {"error": "unsupported MCP method"})
-                    return
                 token = self._token()
                 if runtime.api.token is not None and token != runtime.api.token:
                     self._write(401, {"error": "unauthorized"})
@@ -67,6 +64,9 @@ def make_handler(runtime: Runtime):
                 if self.path == "/v1/sync/changes":
                     change = request
                     self._write(200, {"accepted": True, "id": change["id"]})
+                    return
+                if request.get("method") != "tools/call":
+                    self._write(400, {"error": "unsupported MCP method"})
                     return
                 if self.path != "/mcp":
                     self._write(404, {"error": "endpoint not found"})
