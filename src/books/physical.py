@@ -31,7 +31,6 @@ class PhysicalCopy:
         if self.condition not in {"new","good","fair","poor","damaged"}: raise ValueError("invalid copy condition")
 
 
-import hashlib
 
 def make_internal_qr_payload(copy_id: str) -> str:
     if not copy_id.strip(): raise ValueError("copy id is required")
