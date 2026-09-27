@@ -272,7 +272,14 @@ def render_library() -> None:
     settings = load_settings()
     repository = BookRepository(Database(settings.db_path))
     repository.db.migrate()
-    rows = repository.list(limit=100)
+    query = st.text_input(
+        "جستجو در کتابخانه",
+        placeholder="عنوان، نویسنده، مترجم، ناشر یا ISBN",
+    )
+    try:
+        rows = repository.search(query, limit=100) if query.strip() else repository.list(limit=100)
+    except ValueError:
+        rows = []
 
     if not rows:
         st.info("کتابخانه هنوز خالی است. از بخش «افزودن کتاب» یک کتاب انتخاب و ذخیره کنید.")
