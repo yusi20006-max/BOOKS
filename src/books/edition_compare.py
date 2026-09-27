@@ -23,7 +23,7 @@ def compare_editions(left: Edition, right: Edition) -> EditionMatch:
 
 def is_duplicate_edition(left: Edition,right: Edition) -> bool:
     m=compare_editions(left,right)
-    return "isbn" in m.reasons or ("work" in m.reasons and m.score>=50)
+    return "isbn" in m.reasons or "work" in m.reasons
 
 def deduplicate_editions(editions: list[Edition]) -> list[Edition]:
     kept=[]
