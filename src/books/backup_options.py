@@ -1,8 +1,11 @@
-from __future__ import annotations
-import base64, hashlib, json, threading
+import base64
+import hashlib
+import json
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+
 
 @dataclass(frozen=True, slots=True)
 class BackupSchedule:
@@ -41,7 +44,7 @@ class BackupScheduler:
         for old in candidates[self.retention:]: old.unlink(missing_ok=True)
     def run_once_recovering(self)->Path|None:
         try: return self.run_once()
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             self._atomic(self.state_path,json.dumps({"status":"error","error":str(exc)}).encode()); return None
     def start(self):
         if self._thread and self._thread.is_alive(): return
