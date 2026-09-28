@@ -52,4 +52,4 @@ def test_sync_and_backup_roundtrip_e2e(tmp_path):
     restored_db = Database(restored)
     assert restored_db.migrate() == 0
     restored_book = BookRepository(restored_db).get("42")
-    assert restored_book.title == "E2E"
+    assert restored_book["title"] == "E2E"
