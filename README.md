@@ -13,3 +13,5 @@ Version `1.0.0` is defined once in `src/books/__init__.py` and exposed to packag
 The reproducible release gate builds both sdist and wheel, installs the wheel in an isolated environment, verifies installed metadata and source version, runs migration and health, then starts the installed runtime and exercises health, OpenAPI, authenticated MCP, and sync transport. Artifacts are emitted under `dist/` by `python -m build --sdist --wheel`.
 
 A release is accepted only when clean-database migration, existing-database migration idempotency, REST/MCP runtime, offline smoke, full pytest, lint, Docker build, and the clean wheel-install/package runtime gate are green in CI. Release tags are created only from the verified main commit after that gate passes.
+
+See [Release Governance](docs/RELEASE-GOVERNANCE.md) for the branch-protection policy, release checklist, tag rules, and final release boundary.
