@@ -7,6 +7,10 @@ from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
+from .api import APIError, BooksAPI
+from .db import BookRepository, Database
+from .mcp import build_server
+from .sync import Change, SyncRuntime
 
 
 class Runtime:
