@@ -28,7 +28,7 @@ def test_foreign_owner_is_never_stopped(monkeypatch, capsys):
 def test_books_owner_is_stopped_and_runtime_execed(monkeypatch):
     owner = startup.PortOwner(1234, "python -m books.runtime --port 8080")
     calls = []
-    states = iter([owner, None])
+    states = iter([owner, None, None])
     monkeypatch.setattr(startup, "port_owner", lambda port: next(states))
     monkeypatch.setattr(startup.os, "kill", lambda pid, sig: calls.append((pid, sig)))
     monkeypatch.setattr(startup.os, "execv", lambda executable, command: calls.append((executable, command)))
@@ -46,12 +46,18 @@ def test_is_books_process():
 
 def test_port_owner_reads_proc(monkeypatch):
     monkeypatch.setattr(startup.subprocess, "check_output", lambda *args, **kwargs: "1234\n")
-    monkeypatch.setattr(
-        "builtins.open",
-        lambda *args, **kwargs: type("F", (), {
-            "read": lambda self: b"python\0-m\0books.runtime\0"
-        })(),
-    )
+
+    class FakeProcFile:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b"python\0-m\0books.runtime\0"
+
+    monkeypatch.setattr("builtins.open", lambda *args, **kwargs: FakeProcFile())
     owner = startup.port_owner(8080)
     assert owner == startup.PortOwner(1234, "python -m books.runtime")
 
