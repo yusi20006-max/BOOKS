@@ -1,4 +1,6 @@
-import json, threading, urllib.request
+import json
+import threading
+import urllib.request
 from books.runtime import create_server
 from books.sync import RemoteSyncClient, SyncQueue, flush_queue, make_change
 
