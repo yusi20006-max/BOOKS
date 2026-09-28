@@ -25,6 +25,16 @@ def test_foreign_owner_is_never_stopped(monkeypatch, capsys):
     assert "foreign process" in capsys.readouterr().out
 
 
+def test_unknown_occupied_port_is_refused_without_kill(monkeypatch, capsys):
+    monkeypatch.setattr(startup, "_run", lambda command: "")
+    monkeypatch.setattr(startup, "_port_is_occupied", lambda port: True)
+    killed = []
+    monkeypatch.setattr(startup.os, "kill", lambda *args: killed.append(args))
+    assert startup.main(["--port", "8080", "--db", "x.sqlite3"]) == 2
+    assert killed == []
+    assert "unknown process" in capsys.readouterr().out
+
+
 def test_books_owner_is_stopped_and_runtime_execed(monkeypatch):
     owner = startup.PortOwner(1234, "python -m books.runtime --port 8080")
     calls = []
@@ -60,6 +70,16 @@ def test_port_owner_reads_proc(monkeypatch):
     monkeypatch.setattr("builtins.open", lambda *args, **kwargs: FakeProcFile())
     owner = startup.port_owner(8080)
     assert owner == startup.PortOwner(1234, "python -m books.runtime")
+
+
+def test_termux_process_list_finds_books_owner(monkeypatch):
+    monkeypatch.setattr(
+        startup,
+        "_run",
+        lambda command: "4321 python -m books.runtime --port 8080\n",
+    )
+    owner = startup._books_owner_from_process_list(8080)
+    assert owner == startup.PortOwner(4321, "python -m books.runtime --port 8080")
 
 
 def test_real_foreign_process_survives(tmp_path):

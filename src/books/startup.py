@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import os
+import re
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -26,21 +29,72 @@ def _run(command: list[str]) -> str:
         return ""
 
 
+def _port_is_occupied(port: int) -> bool:
+    for host in ("127.0.0.1", "::1"):
+        family = socket.AF_INET6 if ":" in host else socket.AF_INET
+        sock = socket.socket(family, socket.SOCK_STREAM)
+        try:
+            sock.bind((host, port))
+        except OSError as exc:
+            if exc.errno == errno.EADDRINUSE:
+                return True
+            continue
+        finally:
+            sock.close()
+    return False
+
+
+def _proc_command(pid: int) -> str:
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as proc_file:
+            return proc_file.read().replace(b"\0", b" ").decode().strip()
+    except (FileNotFoundError, PermissionError, OSError):
+        return f"PID {pid}"
+
+
+def _books_owner_from_process_list(port: int) -> PortOwner | None:
+    output = _run(["ps", "-A", "-o", "pid=,args="])
+    for line in output.splitlines():
+        match = re.match(r"\s*(\d+)\s+(.*)", line)
+        if not match:
+            continue
+        pid = int(match.group(1))
+        command = match.group(2).strip()
+        lowered = command.lower()
+        port_arg = (
+            f"--port {port}" in lowered
+            or f"--port={port}" in lowered
+            or f"--server.port {port}" in lowered
+            or f"--server.port={port}" in lowered
+        )
+        books_command = (
+            "books.runtime" in lowered
+            or "books.startup" in lowered
+            or ("streamlit" in lowered and "books" in lowered)
+        )
+        if books_command and port_arg:
+            return PortOwner(pid, command)
+    return None
+
+
 def port_owner(port: int) -> PortOwner | None:
     output = _run(["fuser", "-n", "tcp", str(port)])
     pids = [int(x) for x in output.split() if x.isdigit()]
     if not pids:
         output = _run(["fuser", f"{port}/tcp"])
         pids = [int(x) for x in output.split() if x.isdigit()]
-    if not pids:
-        return None
-    pid = pids[0]
-    try:
-        with open(f"/proc/{pid}/cmdline", "rb") as proc_file:
-            command = proc_file.read().replace(b"\0", b" ").decode().strip()
-    except (FileNotFoundError, PermissionError, OSError):
-        command = f"PID {pid}"
-    return PortOwner(pid, command)
+    if pids:
+        pid = pids[0]
+        return PortOwner(pid, _proc_command(pid))
+
+    books_owner = _books_owner_from_process_list(port)
+    if books_owner is not None:
+        return books_owner
+
+    if _port_is_occupied(port):
+        return PortOwner(0, "unknown process (port is occupied; owner inspection unavailable)")
+
+    return None
 
 
 def is_books_process(owner: PortOwner) -> bool:
@@ -63,6 +117,8 @@ def wait_port_free(port: int, timeout: float = 5.0) -> bool:
 
 
 def stop_books(owner: PortOwner, timeout: float = 5.0) -> None:
+    if owner.pid <= 0:
+        raise StartupError("BOOKS port owner PID is unavailable; refusing to stop an unknown process")
     try:
         os.kill(owner.pid, signal.SIGTERM)
     except ProcessLookupError:
@@ -93,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     if owner is not None:
         print(f"BOOKS startup: port {args.port} is occupied by PID {owner.pid}: {owner.command}", flush=True)
         if not is_books_process(owner):
-            print("BOOKS startup: foreign process detected; refusing to stop it.", flush=True)
+            print("BOOKS startup: foreign process or unknown owner detected; refusing to stop it.", flush=True)
             return 2
         print(f"BOOKS startup: existing BOOKS process PID {owner.pid}; stopping safely.", flush=True)
         os.environ["BOOKS_PORT"] = str(args.port)
