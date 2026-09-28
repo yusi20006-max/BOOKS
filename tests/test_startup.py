@@ -1,4 +1,3 @@
-import os
 import signal
 import socket
 import subprocess
@@ -40,18 +39,19 @@ def test_books_owner_is_stopped_and_runtime_execed(monkeypatch):
 
 
 def test_is_books_process():
-    assert startup.is_books_process(startup.PortOwner(1, "python -m books.runtime")) 
+    assert startup.is_books_process(startup.PortOwner(1, "python -m books.runtime"))
     assert startup.is_books_process(startup.PortOwner(1, "streamlit run src/books/app.py"))
     assert not startup.is_books_process(startup.PortOwner(1, "python -m other.app"))
 
 
 def test_port_owner_reads_proc(monkeypatch):
-    class Result:
-        stdout = "1234\n"
     monkeypatch.setattr(startup.subprocess, "check_output", lambda *args, **kwargs: "1234\n")
-    monkeypatch.setattr("builtins.open", lambda *args, **kwargs: type("F", (), {
-        "read": lambda self: b"python\0-m\0books.runtime\0"
-    })())
+    monkeypatch.setattr(
+        "builtins.open",
+        lambda *args, **kwargs: type("F", (), {
+            "read": lambda self: b"python\0-m\0books.runtime\0"
+        })(),
+    )
     owner = startup.port_owner(8080)
     assert owner == startup.PortOwner(1234, "python -m books.runtime")
 
@@ -63,7 +63,9 @@ def test_real_foreign_process_survives(tmp_path):
         time.sleep(0.3)
         result = subprocess.run(
             [sys.executable, "-m", "books.startup", "--port", str(port), "--db", str(tmp_path / "books.sqlite3")],
-            text=True, capture_output=True,
+            text=True,
+            capture_output=True,
+            check=False,
         )
         assert result.returncode == 2
         assert proc.poll() is None
