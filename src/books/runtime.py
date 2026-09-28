@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import asdict
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
@@ -58,7 +59,7 @@ def make_handler(runtime: Runtime):
                     runtime.api.authorize(self._token()); runtime.api.check_rate_limit(self.client_address[0])
                     since=int(query.get("since","0"))
                     if since<0: raise ValueError
-                    self._write(200,{"changes":[c.__dict__ for c in runtime.sync.changes_since(since)]})
+                    self._write(200,{"changes":[asdict(c) for c in runtime.sync.changes_since(since)]})
                 except (ValueError,TypeError): self._write(400,{"error":"since must be a non-negative integer"})
                 except APIError as exc: self._write(exc.status,{"error":exc.message})
                 return
