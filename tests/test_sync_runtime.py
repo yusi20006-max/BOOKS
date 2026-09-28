@@ -5,6 +5,7 @@ import urllib.request
 from books.runtime import create_server
 from books.sync import RemoteSyncClient, SyncQueue, flush_queue, make_change
 
+
 def test_persistent_queue_survives_restart(tmp_path):
     path=tmp_path/"sync.sqlite3"; change=make_change("book","1","update",{"title":"الف"})
     assert SyncQueue(path).enqueue(change)
