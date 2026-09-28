@@ -149,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     if owner is not None:
         print(f"BOOKS startup: port {args.port} is occupied by PID {owner.pid}: {owner.command}", flush=True)
         if not is_books_process(owner):
-            print("BOOKS startup: foreign or unknown process detected; refusing to stop it.", flush=True)
+            print("BOOKS startup: foreign process or unknown owner detected; refusing to stop it.", flush=True)
             return 2
         print(f"BOOKS startup: existing BOOKS process PID {owner.pid}; stopping safely.", flush=True)
         os.environ["BOOKS_PORT"] = str(args.port)
