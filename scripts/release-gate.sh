@@ -13,6 +13,10 @@ wheel-env/bin/python -m pip install dist/*.whl
 wheel-env/bin/python -m pip uninstall -y books >/dev/null
 wheel-env/bin/python -m pip install dist/*.whl
 
+cd "${TMPDIR:-/tmp}"
+RELEASE_WHEEL="$OLDPWD"/dist/*.whl
+cd "$OLDPWD"
+
 test "$(wheel-env/bin/python -c 'import importlib.metadata as m; print(m.version("books"))')" = "1.0.0"
 test "$(wheel-env/bin/python -c 'import books; print(books.__version__)')" = "1.0.0"
 
@@ -81,7 +85,8 @@ with urllib.request.urlopen(request, timeout=3) as response:
     payload = json.load(response)
 assert payload["accepted"] is True and payload["applied"] is True
 
-with urllib.request.urlopen(base + "/v1/sync/changes?since=0", timeout=3) as response:
+request = urllib.request.Request(base + "/v1/sync/changes?since=0", headers=headers)
+with urllib.request.urlopen(request, timeout=3) as response:
     payload = json.load(response)
 assert payload["changes"][0]["id"] == change["id"]
 PY
