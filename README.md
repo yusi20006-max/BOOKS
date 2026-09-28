@@ -8,7 +8,7 @@ Run `python -m books.runtime --host 127.0.0.1 --port 8080 --db books.sqlite3`. C
 
 ## Release policy
 
-Version `1.0.0` is defined once in `src/books/__init__.py` and exposed to packaging through setuptools dynamic metadata. Core runtime dependencies are installed by the base package. Barcode decoding is an optional integration: install `books[barcode]` to enable the ZXing C++ decoder. The scanner also supports injected decoders without that dependency and reports an actionable error when the default decoder is unavailable.
+Version `1.0.1` is defined once in `src/books/__init__.py` and exposed to packaging through setuptools dynamic metadata. Core runtime dependencies are installed by the base package. Barcode decoding is an optional integration: install `books[barcode]` to enable the ZXing C++ decoder. The scanner also supports injected decoders without that dependency and reports an actionable error when the default decoder is unavailable.
 
 The reproducible release gate builds both sdist and wheel, installs the wheel in an isolated environment, verifies installed metadata and source version, runs migration and health, then starts the installed runtime and exercises health, OpenAPI, authenticated MCP, and sync transport. Artifacts are emitted under `dist/` by `python -m build --sdist --wheel`.
 

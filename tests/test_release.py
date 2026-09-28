@@ -3,9 +3,13 @@ import re
 from pathlib import Path
 
 from books import __version__
+from books.api import BooksAPI
 
 
-def test_release_version(): assert __version__=="1.0.0"
+def test_release_version(): assert __version__=="1.0.1"
+
+def test_openapi_version_matches_package_version():
+    assert BooksAPI.openapi()["info"]["version"] == __version__
 
 def test_core_modules_import():
     modules = [
