@@ -16,13 +16,19 @@ class BackupSchedule:
 
 def encrypt_backup(data:bytes,password:str)->bytes:
     if not password: raise ValueError("password is required")
-    from cryptography.fernet import Fernet
+    try:
+        from cryptography.fernet import Fernet
+    except ImportError as exc:
+        raise RuntimeError("cryptography is required") from exc
     key=base64.urlsafe_b64encode(hashlib.sha256(password.encode()).digest())
     return b"BOOKSENC1"+Fernet(key).encrypt(data)
 
 def decrypt_backup(data:bytes,password:str)->bytes:
     if not data.startswith(b"BOOKSENC1") or not password: raise ValueError("invalid encrypted backup")
-    from cryptography.fernet import Fernet
+    try:
+        from cryptography.fernet import Fernet
+    except ImportError as exc:
+        raise RuntimeError("cryptography is required") from exc
     key=base64.urlsafe_b64encode(hashlib.sha256(password.encode()).digest())
     return Fernet(key).decrypt(data[9:])
 
