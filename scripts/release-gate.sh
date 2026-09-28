@@ -1,32 +1,31 @@
 #!/usr/bin/env sh
 set -eu
 
+ROOT="$PWD"
 python -m pip install --upgrade pip build
-rm -rf dist wheel-env
+rm -rf "$ROOT/dist" "$ROOT/wheel-env"
 python -m build --sdist --wheel
 
 test -f dist/*.tar.gz
 test -f dist/*.whl
 
 python -m venv wheel-env
-wheel-env/bin/python -m pip install dist/*.whl
-wheel-env/bin/python -m pip uninstall -y books >/dev/null
-wheel-env/bin/python -m pip install dist/*.whl
+"$ROOT/wheel-env/bin/python" -m pip install "$ROOT"/dist/*.whl
+"$ROOT/wheel-env/bin/python" -m pip uninstall -y books >/dev/null
+"$ROOT/wheel-env/bin/python" -m pip install "$ROOT"/dist/*.whl
 
 cd "${TMPDIR:-/tmp}"
-RELEASE_WHEEL="$OLDPWD"/dist/*.whl
-cd "$OLDPWD"
 
-test "$(wheel-env/bin/python -c 'import importlib.metadata as m; print(m.version("books"))')" = "1.0.0"
+test "$("$ROOT/wheel-env/bin/python" -c 'import importlib.metadata as m; print(m.version("books"))')" = "1.0.0"
 test "$(wheel-env/bin/python -c 'import books; print(books.__version__)')" = "1.0.0"
 
 rm -f release-gate.sqlite3
-BOOKS_DB_PATH="$PWD/release-gate.sqlite3" wheel-env/bin/python -c 'from books.config import load_settings; from books.db import Database; s=load_settings(); assert Database(s.db_path).migrate() == 11'
+BOOKS_DB_PATH="$ROOT/release-gate.sqlite3" "$ROOT/wheel-env/bin/python" -c 'from books.config import load_settings; from books.db import Database; s=load_settings(); assert Database(s.db_path).migrate() == 11'
 BOOKS_DB_PATH="$PWD/release-gate.sqlite3" wheel-env/bin/python -m books.health
 
-BOOKS_DB_PATH="$PWD/release-gate.sqlite3" BOOKS_API_TOKEN="release-gate-token" wheel-env/bin/python -m books.runtime --host 127.0.0.1 --port 18080 >release-gate-runtime.log 2>&1 &
+BOOKS_DB_PATH="$ROOT/release-gate.sqlite3" BOOKS_API_TOKEN="release-gate-token" "$ROOT/wheel-env/bin/python" -m books.runtime --host 127.0.0.1 --port 18080 >"$ROOT/release-gate-runtime.log" 2>&1 &
 runtime_pid=$!
-trap 'kill "$runtime_pid" 2>/dev/null || true; rm -f release-gate.sqlite3 release-gate-runtime.log' EXIT
+trap 'kill "$runtime_pid" 2>/dev/null || true; rm -f "$ROOT/release-gate.sqlite3" "$ROOT/release-gate-runtime.log"' EXIT
 
 python - <<'PY'
 import json
