@@ -73,15 +73,11 @@ def test_port_owner_reads_proc(monkeypatch):
 
 
 def test_termux_process_list_finds_books_owner(monkeypatch):
-    def fake_run(command):
-        if command[:2] == ["fuser", "-n"]:
-            return ""
-        if command[:1] == ["fuser"]:
-            return ""
-        return "4321 python -m books.runtime --port 8080\n"
-
-    monkeypatch.setattr(startup, "_run", fake_run)
-    monkeypatch.setattr(startup, "_port_is_occupied", lambda port: True)
+    monkeypatch.setattr(
+        startup,
+        "_run",
+        lambda command: "4321 python -m books.runtime --port 8080\n",
+    )
     owner = startup.port_owner(8080)
     assert owner == startup.PortOwner(4321, "python -m books.runtime --port 8080")
 
