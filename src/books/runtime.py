@@ -16,6 +16,29 @@ class Runtime:
         self.api = BooksAPI(repository, token=token)
         self.mcp = build_server(repository)
 
+    def mcp_call(self, request: dict, *, client_id: str) -> dict:
+        request_id = request.get("id")
+        if request.get("jsonrpc") != "2.0" or request.get("method") != "tools/call":
+            return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32600, "message": "invalid request"}}
+        params = request.get("params")
+        if not isinstance(params, dict) or not isinstance(params.get("name"), str):
+            return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32602, "message": "invalid params"}}
+        self.api.check_rate_limit(client_id)
+        try:
+            result = self.mcp.call(
+                params["name"],
+                params.get("arguments"),
+                confirmed=bool(params.get("confirmed")),
+                actor=client_id,
+            )
+        except KeyError:
+            return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32601, "message": "method not found"}}
+        except PermissionError as exc:
+            return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32001, "message": str(exc)}}
+        except (TypeError, ValueError) as exc:
+            return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32602, "message": str(exc)}}
+        return {"jsonrpc": "2.0", "id": request_id, "result": result}
+
 
 def make_handler(runtime: Runtime):
     class Handler(BaseHTTPRequestHandler):
@@ -56,36 +79,30 @@ def make_handler(runtime: Runtime):
         def do_POST(self) -> None:
             try:
                 length = int(self.headers.get("Content-Length", "0"))
+                if length < 0 or length > 1_048_576:
+                    self._write(413, {"error": "request body too large"})
+                    return
                 request = json.loads(self.rfile.read(length))
                 token = self._token()
-                if runtime.api.token is not None and token != runtime.api.token:
-                    self._write(401, {"error": "unauthorized"})
+                runtime.api.authorize(token)
+                if self.path == "/mcp":
+                    try:
+                        self._write(200, runtime.mcp_call(request, client_id=self.client_address[0]))
+                    except APIError as exc:
+                        self._write(exc.status, {"error": exc.message})
                     return
                 if self.path == "/v1/sync/changes":
-                    change = request
-                    self._write(200, {"accepted": True, "id": change["id"]})
+                    if not isinstance(request, dict) or not request.get("id"):
+                        self._write(400, {"error": "change id is required"})
+                        return
+                    runtime.api.check_rate_limit(self.client_address[0])
+                    self._write(200, {"accepted": True, "id": request["id"]})
                     return
-                if request.get("method") != "tools/call":
-                    self._write(400, {"error": "unsupported MCP method"})
-                    return
-                if self.path != "/mcp":
-                    self._write(404, {"error": "endpoint not found"})
-                    return
-                params = request["params"]
-                result = runtime.mcp.call(
-                    params["name"],
-                    params.get("arguments"),
-                    confirmed=bool(params.get("confirmed")),
-                    actor=self.client_address[0],
-                )
-                self._write(
-                    200,
-                    {"jsonrpc": "2.0", "id": request.get("id"), "result": result},
-                )
-            except PermissionError as exc:
-                self._write(403, {"error": str(exc)})
-            except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-                self._write(400, {"error": str(exc)})
+                self._write(404, {"error": "endpoint not found"})
+            except APIError as exc:
+                self._write(exc.status, {"error": exc.message})
+            except (json.JSONDecodeError, TypeError, ValueError):
+                self._write(400, {"error": "invalid JSON request"})
 
         def log_message(self, *_args: object) -> None:
             return
