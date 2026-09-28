@@ -5,6 +5,7 @@ from http.client import HTTPConnection
 from books.db import BookRepository, Database
 from books.models import Book
 from books.runtime import create_server
+from books.sync import Change, SyncRuntime
 
 
 def test_clean_and_existing_database_e2e(tmp_path):
@@ -29,3 +30,26 @@ def test_clean_and_existing_database_e2e(tmp_path):
     finally:
         server.shutdown()
         thread.join(timeout=3)
+
+
+def test_sync_and_backup_roundtrip_e2e(tmp_path):
+    path = tmp_path / "books.sqlite3"
+    db = Database(path)
+    assert db.migrate() == 11
+    change = Change(
+        "e2e:book:42:1", "book", "42", "create", 1,
+        {"title": "E2E", "authors": ["Author"]}, "2026-01-01T00:00:00+00:00"
+    )
+    runtime = SyncRuntime(db)
+    assert runtime.apply(change) is True
+    assert runtime.apply(change) is False
+
+    from books.backup import BackupService
+    service = BackupService(path)
+    backup = service.create_backup_bytes()
+    restored = tmp_path / "restored.sqlite3"
+    BackupService(restored).restore_bytes(backup)
+    restored_db = Database(restored)
+    assert restored_db.migrate() == 0
+    restored_book = BookRepository(restored_db).get("42")
+    assert restored_book["title"] == "E2E"

@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS idx_books_isbn10 ON books(isbn10); CREATE INDEX IF NOT EXISTS idx_books_isbn13 ON books(isbn13); CREATE INDEX IF NOT EXISTS idx_books_status_updated ON books(reading_status,updated_at); CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);

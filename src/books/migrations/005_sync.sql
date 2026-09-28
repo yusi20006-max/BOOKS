@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS sync_changes (id TEXT PRIMARY KEY, entity TEXT NOT NULL, entity_id TEXT NOT NULL, operation TEXT NOT NULL, version INTEGER NOT NULL, payload_json TEXT NOT NULL, changed_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_sync_changes_entity ON sync_changes(entity,entity_id,version);

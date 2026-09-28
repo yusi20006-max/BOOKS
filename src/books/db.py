@@ -29,7 +29,7 @@ class Database:
         return conn
 
     def migrate(self) -> int:
-        packaged = Path(__file__).resolve().parents[2] / "migrations"
+        packaged = Path(__file__).resolve().parent / "migrations"
         working_tree = Path.cwd() / "migrations"
         migrations_dir = packaged if packaged.exists() else working_tree
         if not migrations_dir.exists():
