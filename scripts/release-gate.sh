@@ -16,8 +16,8 @@ python -m venv wheel-env
 
 cd "${TMPDIR:-/tmp}"
 
-test "$("$ROOT/wheel-env/bin/python" -c 'import importlib.metadata as m; print(m.version("books"))')" = "1.0.0"
-test "$("$ROOT/wheel-env/bin/python" -c 'import books; print(books.__version__)')" = "1.0.0"
+test "$("$ROOT/wheel-env/bin/python" -c 'import importlib.metadata as m; print(m.version("books"))')" = "1.0.1"
+test "$("$ROOT/wheel-env/bin/python" -c 'import books; print(books.__version__)')" = "1.0.1"
 
 rm -f "$ROOT/release-gate.sqlite3"
 BOOKS_DB_PATH="$ROOT/release-gate.sqlite3" "$ROOT/wheel-env/bin/python" -c 'from books.config import load_settings; from books.db import Database; s=load_settings(); assert Database(s.db_path).migrate() == 11'

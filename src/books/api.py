@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from time import monotonic
 from typing import Any
 
+from . import __version__
 from .db import BookRepository
 
 
@@ -96,7 +97,7 @@ class BooksAPI:
     def openapi() -> dict[str, Any]:
         return {
             "openapi": "3.0.3",
-            "info": {"title": "BOOKS API", "version": "1.0.0"},
+            "info": {"title": "BOOKS API", "version": __version__},
             "servers": [{"url": "/"}],
             "components": {
                 "securitySchemes": {
