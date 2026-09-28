@@ -78,7 +78,7 @@ def test_termux_process_list_finds_books_owner(monkeypatch):
         "_run",
         lambda command: "4321 python -m books.runtime --port 8080\n",
     )
-    owner = startup.port_owner(8080)
+    owner = startup._books_owner_from_process_list(8080)
     assert owner == startup.PortOwner(4321, "python -m books.runtime --port 8080")
 
 
