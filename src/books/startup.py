@@ -36,7 +36,8 @@ def port_owner(port: int) -> PortOwner | None:
         return None
     pid = pids[0]
     try:
-        command = open(f"/proc/{pid}/cmdline", "rb").read().replace(b"\0", b" ").decode().strip()
+        with open(f"/proc/{pid}/cmdline", "rb") as proc_file:
+            command = proc_file.read().replace(b"\0", b" ").decode().strip()
     except (FileNotFoundError, PermissionError, OSError):
         command = f"PID {pid}"
     return PortOwner(pid, command)
