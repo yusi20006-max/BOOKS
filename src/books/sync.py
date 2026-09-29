@@ -162,7 +162,7 @@ class SyncRuntime:
             current=conn.execute("SELECT * FROM books WHERE id=?",(change.entity_id,)).fetchone()
         if change.operation == "delete":
             self.repo.delete(change.entity_id)
-        elif change.operation in {"create","update"}:
+        elif change.operation in {"create","update","upsert"}:
             payload=dict(change.payload); payload["id"]=change.entity_id
             if current:
                 book=Book(
