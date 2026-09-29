@@ -55,7 +55,13 @@ def configure_page() -> None:
         """
         <style>
         :root { color-scheme: light dark; }
-        .stApp { direction: rtl; }
+        /* Keep the document direction LTR so Streamlit's native sidebar
+           positioning/collapse transforms remain intact. Apply RTL only to
+           the application content and sidebar content. */
+        .stApp { direction: ltr; }
+        .stApp .main .block-container {
+            direction: rtl;
+        }
         .stApp [data-testid="stSidebarContent"] {
             direction: rtl;
         }
