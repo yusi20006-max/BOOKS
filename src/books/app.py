@@ -55,14 +55,18 @@ def configure_page() -> None:
         """
         <style>
         :root { color-scheme: light dark; }
-        .stApp, .stApp [data-testid="stSidebar"] { direction: rtl; }
-        .stApp [data-testid="stSidebar"] * { text-align: right; }
+        .stApp { direction: rtl; }
+        .stApp [data-testid="stSidebarContent"] {
+            direction: rtl;
+        }
+        .stApp [data-testid="stSidebarContent"] * {
+            text-align: right;
+        }
         .stApp input, .stApp textarea, .stApp [data-baseweb="select"] { direction: rtl; }
         .stApp p, .stApp label, .stApp h1, .stApp h2, .stApp h3 { line-height: 1.9; }
         .block-container { max-width: 1200px; padding: 2rem 1rem 4rem; }
         @media (max-width: 768px) {
             .block-container { padding: 1rem .75rem 3rem; }
-            [data-testid="stSidebar"] { min-width: 15rem; max-width: 18rem; }
         }
         </style>
         """,
