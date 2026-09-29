@@ -84,8 +84,8 @@ class BooksAPI:
             limit, offset = self._pagination(query)
             return [dict(x) for x in self.repo.list(limit, offset)]
         if method == "GET" and path == "/v1/search":
-            limit, _ = self._pagination(query)
-            return [dict(x) for x in self.repo.search(query.get("q", ""), limit)]
+            limit, offset = self._pagination(query)
+            return [dict(x) for x in self.repo.search(query.get("q", ""), limit, offset)]
         if method == "GET" and path.startswith("/v1/books/"):
             row = self.repo.get(path.rsplit("/", 1)[1])
             if row is None:
