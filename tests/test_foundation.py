@@ -3,7 +3,7 @@ from books.config import load_settings
 
 def test_package_version():
     import books
-    assert books.__version__ == "1.0.1"
+    assert books.__version__ == "1.1.0"
 
 
 def test_settings_defaults(monkeypatch):

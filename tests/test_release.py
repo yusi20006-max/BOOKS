@@ -6,7 +6,7 @@ from books import __version__
 from books.api import BooksAPI
 
 
-def test_release_version(): assert __version__=="1.0.1"
+def test_release_version(): assert __version__=="1.1.0"
 
 def test_openapi_version_matches_package_version():
     assert BooksAPI.openapi()["info"]["version"] == __version__
