@@ -1,7 +1,14 @@
 from pathlib import Path
 
 from books.db import Database
-from books.sync import SyncRuntime, SyncQueue, detect_conflict, make_change, resolve_conflict, sync_settings
+from books.sync import (
+    SyncQueue,
+    SyncRuntime,
+    detect_conflict,
+    make_change,
+    resolve_conflict,
+    sync_settings,
+)
 
 
 def test_change_and_conflict():
