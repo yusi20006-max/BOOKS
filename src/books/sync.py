@@ -195,7 +195,7 @@ class SyncRuntime:
                     source_ids=payload.get("source_ids", {}),
                     notes=payload.get("notes"),
                 )
-                self.repo.create_book(book)
+                self.repo.create_book(book, book_id=change.entity_id)
         else:
             raise ValueError("unsupported sync operation")
         with self.db.connect() as conn:
