@@ -82,6 +82,32 @@ def test_termux_process_list_finds_books_owner(monkeypatch):
     assert owner == startup.PortOwner(4321, "python -m books.runtime --port 8080")
 
 
+def test_books_owner_from_process_list_ignores_self(monkeypatch):
+    current = startup.os.getpid()
+    monkeypatch.setattr(
+        startup,
+        "_run",
+        lambda command: f"{current} python -m books.startup --port 8080\n",
+    )
+    assert startup._books_owner_from_process_list(8080) is None
+
+
+def test_port_owner_ignores_self_and_reports_unknown(monkeypatch):
+    current = startup.os.getpid()
+    monkeypatch.setattr(startup, "_port_is_occupied", lambda port: True)
+
+    def fake_run(command):
+        if "fuser" in command:
+            return ""
+        return f"{current} python -m books.startup --port 8080\n"
+
+    monkeypatch.setattr(startup, "_run", fake_run)
+    owner = startup.port_owner(8080)
+    assert owner is not None
+    assert owner.pid == 0
+    assert not startup.is_books_process(owner)
+
+
 def test_real_foreign_process_survives(tmp_path):
     port = free_port()
     proc = subprocess.Popen([sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"])

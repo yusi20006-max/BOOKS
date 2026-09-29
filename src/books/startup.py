@@ -53,12 +53,15 @@ def _proc_command(pid: int) -> str:
 
 
 def _books_owner_from_process_list(port: int) -> PortOwner | None:
+    current = os.getpid()
     output = _run(["ps", "-A", "-o", "pid=,args="])
     for line in output.splitlines():
         match = re.match(r"\s*(\d+)\s+(.*)", line)
         if not match:
             continue
         pid = int(match.group(1))
+        if pid == current:
+            continue
         command = match.group(2).strip()
         lowered = command.lower()
         port_arg = (
