@@ -177,7 +177,25 @@ class SyncRuntime:
                 )
                 self.repo.update_book(change.entity_id,book)
             else:
-                self.repo.create(payload)
+                book = Book(
+                    title=payload.get("title", ""),
+                    original_title=payload.get("original_title"),
+                    authors=payload.get("authors", []),
+                    translators=payload.get("translators", []),
+                    publisher=payload.get("publisher"),
+                    pages=payload.get("pages"),
+                    publication_year=payload.get("publication_year"),
+                    isbn10=payload.get("isbn10"),
+                    isbn13=payload.get("isbn13"),
+                    language=payload.get("language"),
+                    genres=payload.get("genres", []),
+                    subjects=payload.get("subjects", []),
+                    summary=payload.get("summary"),
+                    cover_url=payload.get("cover_url"),
+                    source_ids=payload.get("source_ids", {}),
+                    notes=payload.get("notes"),
+                )
+                self.repo.create_book(book)
         else:
             raise ValueError("unsupported sync operation")
         with self.db.connect() as conn:
