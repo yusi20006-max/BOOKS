@@ -126,6 +126,9 @@ def render_candidate(candidate: MergedDiscoveryItem, index: int) -> None:
         st.caption(f"منبع: {sources} | اطمینان تطبیق: {candidate.confidence:.0%}")
         if st.button("انتخاب این کتاب", key=f"select-candidate-{index}", type="primary"):
             st.session_state["selected_candidate"] = candidate
+            st.session_state.pop("edited_candidate", None)
+            st.session_state.pop("edited_candidate_source", None)
+            st.session_state.pop("saved_book_id", None)
             st.success("این نتیجه انتخاب شد؛ مرحله تأیید و ویرایش در Issue بعدی انجام می‌شود.")
 
 
@@ -151,6 +154,7 @@ def build_edited_book(
     subjects: str,
     summary: str,
     cover_url: str,
+    notes: str | None = None,
     source_ids: dict[str, str],
 ):
     from .models import Book
@@ -170,6 +174,7 @@ def build_edited_book(
         subjects=_split_lines(subjects),
         summary=summary or None,
         cover_url=cover_url or None,
+        notes=notes or None,
         source_ids=source_ids,
     )
 
@@ -177,26 +182,35 @@ def build_edited_book(
 def render_confirm_edit() -> None:
     candidate = st.session_state.get("selected_candidate")
     if candidate is None:
+        st.session_state.pop("edited_candidate", None)
+        st.session_state.pop("edited_candidate_source", None)
         st.info("ابتدا یک نتیجه را از جستجوی کتاب انتخاب کنید.")
         return
 
+    if st.session_state.get("edited_candidate_source") is not None and (
+        st.session_state.get("edited_candidate_source") is not candidate
+    ):
+        st.session_state.pop("edited_candidate", None)
+        st.session_state.pop("edited_candidate_source", None)
+
     book = candidate.book
+    defaults = st.session_state.get("edited_candidate") or book
     st.subheader("تأیید و ویرایش اطلاعات")
     st.caption("اطلاعات منبع قابل اصلاح است. ذخیره نهایی در مرحله بعد انجام می‌شود.")
 
     with st.form("confirm-edit-book"):
-        title = st.text_input("عنوان", value=book.title)
-        original_title = st.text_input("عنوان اصلی", value=book.original_title or "")
-        authors = st.text_area("نویسندگان — هر نفر در یک خط", value="\n".join(book.authors))
-        translators = st.text_area("مترجمان — هر نفر در یک خط", value="\n".join(book.translators))
-        publisher = st.text_input("ناشر", value=book.publisher or "")
+        title = st.text_input("عنوان", value=defaults.title)
+        original_title = st.text_input("عنوان اصلی", value=defaults.original_title or "")
+        authors = st.text_area("نویسندگان — هر نفر در یک خط", value="\n".join(defaults.authors))
+        translators = st.text_area("مترجمان — هر نفر در یک خط", value="\n".join(defaults.translators))
+        publisher = st.text_input("ناشر", value=defaults.publisher or "")
 
         col1, col2 = st.columns(2)
         with col1:
             pages = st.number_input(
                 "تعداد صفحات",
                 min_value=0,
-                value=book.pages or 0,
+                value=defaults.pages or 0,
                 step=1,
             )
         with col2:
@@ -204,47 +218,55 @@ def render_confirm_edit() -> None:
                 "سال انتشار",
                 min_value=1,
                 max_value=9999,
-                value=book.publication_year or 1400,
+                value=defaults.publication_year or 1400,
                 step=1,
             )
 
-        isbn10 = st.text_input("ISBN-10", value=book.isbn10 or "")
-        isbn13 = st.text_input("ISBN-13", value=book.isbn13 or "")
-        language = st.text_input("زبان", value=book.language or "")
-        genres = st.text_area("ژانرها — هر مورد در یک خط", value="\n".join(book.genres))
-        subjects = st.text_area("موضوعات — هر مورد در یک خط", value="\n".join(book.subjects))
-        summary = st.text_area("خلاصه", value=book.summary or "")
-        cover_url = st.text_input("نشانی جلد", value=book.cover_url or "")
+        isbn10 = st.text_input("ISBN-10", value=defaults.isbn10 or "")
+        isbn13 = st.text_input("ISBN-13", value=defaults.isbn13 or "")
+        language = st.text_input("زبان", value=defaults.language or "")
+        genres = st.text_area("ژانرها — هر مورد در یک خط", value="\n".join(defaults.genres))
+        subjects = st.text_area("موضوعات — هر مورد در یک خط", value="\n".join(defaults.subjects))
+        summary = st.text_area("خلاصه", value=defaults.summary or "")
+        cover_url = st.text_input("نشانی جلد", value=defaults.cover_url or "")
+        notes = st.text_area("یادداشت", value=defaults.notes or "")
 
         submitted = st.form_submit_button("اعتبارسنجی و پیش‌نمایش", type="primary")
 
-    if not submitted:
+    if submitted:
+        try:
+            edited = build_edited_book(
+                title=title,
+                original_title=original_title,
+                authors=authors,
+                translators=translators,
+                publisher=publisher,
+                pages=int(pages),
+                publication_year=int(publication_year),
+                isbn10=isbn10,
+                isbn13=isbn13,
+                language=language,
+                genres=genres,
+                subjects=subjects,
+                summary=summary,
+                cover_url=cover_url,
+                notes=notes or None,
+                source_ids=dict(book.source_ids),
+            )
+        except (TypeError, ValueError) as exc:
+            st.session_state.pop("edited_candidate", None)
+            st.session_state.pop("edited_candidate_source", None)
+            st.error(f"اطلاعات واردشده معتبر نیست: {exc}")
+            return
+
+        st.session_state["edited_candidate"] = edited
+        st.session_state["edited_candidate_source"] = candidate
+        st.success("اطلاعات معتبر است و پیش‌نمایش آماده شد.")
+
+    edited = st.session_state.get("edited_candidate")
+    if edited is None:
         return
 
-    try:
-        edited = build_edited_book(
-            title=title,
-            original_title=original_title,
-            authors=authors,
-            translators=translators,
-            publisher=publisher,
-            pages=int(pages),
-            publication_year=int(publication_year),
-            isbn10=isbn10,
-            isbn13=isbn13,
-            language=language,
-            genres=genres,
-            subjects=subjects,
-            summary=summary,
-            cover_url=cover_url,
-            source_ids=dict(book.source_ids),
-        )
-    except (TypeError, ValueError) as exc:
-        st.error(f"اطلاعات واردشده معتبر نیست: {exc}")
-        return
-
-    st.session_state["edited_candidate"] = edited
-    st.success("اطلاعات معتبر است و پیش‌نمایش آماده شد.")
     _render_save_action(edited)
     with st.container(border=True):
         st.subheader(edited.title)
