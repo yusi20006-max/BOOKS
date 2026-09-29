@@ -1184,9 +1184,27 @@ def render_loans() -> None:
     due_on = st.date_input("تاریخ سررسید")
     if st.button("ثبت نسخه و امانت", type="primary"):
         from uuid import uuid4
-        repository.add_copy(copy_id, book_id)
-        repository.add_loan(str(uuid4()), copy_id, borrower_id, __import__("datetime").date.today().isoformat(), due_on.isoformat())
-        st.success("نسخه و امانت در SQLite ثبت شد.")
+
+        copy_id_clean = copy_id.strip()
+        borrower_id_clean = borrower_id.strip()
+        if not copy_id_clean:
+            st.error("شناسه نسخه را وارد کنید.")
+        elif not borrower_id_clean:
+            st.error("شناسه امانت‌گیرنده را وارد کنید.")
+        else:
+            try:
+                repository.add_copy(copy_id_clean, book_id)
+                repository.add_loan(
+                    str(uuid4()),
+                    copy_id_clean,
+                    borrower_id_clean,
+                    __import__("datetime").date.today().isoformat(),
+                    due_on.isoformat(),
+                )
+            except sqlite3.IntegrityError:
+                st.error("این شناسه نسخه قبلاً ثبت شده است؛ شناسه دیگری وارد کنید.")
+            else:
+                st.success("نسخه و امانت در SQLite ثبت شد.")
     st.dataframe([dict(row) for row in repository.list_loans()], use_container_width=True)
 
 
