@@ -1223,9 +1223,33 @@ def render_ocr() -> None:
     publisher = st.text_input("ناشر اصلاح‌شده", value=str(draft["publisher"]))
     isbn = st.text_input("ISBN اصلاح‌شده", value=str(draft["isbn"]))
     if st.button("ذخیره نتیجه OCR", type="primary"):
-        book = Book(title=title, publisher=publisher or None, isbn13=isbn if len(isbn.replace("-", "")) == 13 else None, isbn10=isbn if len(isbn.replace("-", "")) == 10 else None)
-        repository.create_book(book)
-        st.success("نتیجه OCR پس از اصلاح در SQLite ذخیره شد.")
+        title_clean = title.strip()
+        isbn_clean = isbn.strip()
+        if not title_clean:
+            st.error("عنوان اصلاح‌شده را وارد کنید.")
+        else:
+            try:
+                book = Book(
+                    title=title_clean,
+                    publisher=publisher.strip() or None,
+                    isbn13=isbn_clean if len(isbn_clean.replace("-", "")) == 13 else None,
+                    isbn10=isbn_clean if len(isbn_clean.replace("-", "")) == 10 else None,
+                )
+            except ValueError as exc:
+                st.error(f"اطلاعات واردشده معتبر نیست: {exc}")
+            else:
+                duplicates = repository.find_duplicates(book)
+                if duplicates:
+                    st.warning("کتاب مشابهی در کتابخانه پیدا شد؛ ابتدا نتیجه را بررسی کنید.")
+                    for duplicate in duplicates:
+                        st.write(f"• {duplicate['title']} — {duplicate['isbn13'] or duplicate['isbn10'] or 'بدون ISBN'}")
+                else:
+                    try:
+                        repository.create_book(book)
+                    except sqlite3.IntegrityError:
+                        st.error("رکورد مشابه قبلاً ذخیره شده است و از ایجاد Duplicate جلوگیری شد.")
+                    else:
+                        st.success("نتیجه OCR پس از اصلاح در SQLite ذخیره شد.")
 
 def render_reports() -> None:
     settings = load_settings()
