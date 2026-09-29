@@ -6,6 +6,10 @@ Persian-first, offline-first personal library.
 
 Run `python -m books.runtime --host 127.0.0.1 --port 8080 --db books.sqlite3`. Configure `BOOKS_HOST`, `BOOKS_PORT`, `BOOKS_DB_PATH`, and optional `BOOKS_API_TOKEN`. REST is exposed under `/v1`, OpenAPI at `/openapi.json`, and MCP JSON-RPC 2.0 at `POST /mcp`. The Streamlit UI remains the user-facing application.
 
+## Sync contract
+
+The runtime sync endpoint accepts book changes using `create`, `update`, `upsert`, and `delete` operations. `upsert` creates the book when `entity_id` does not exist and updates the existing book when it does. Change IDs remain idempotent: replaying an already-applied change returns `applied: false` and does not apply the change again.
+
 ## Release policy
 
 Version `1.0.1` is defined once in `src/books/__init__.py` and exposed to packaging through setuptools dynamic metadata. Core runtime dependencies are installed by the base package. Barcode decoding is an optional integration: install `books[barcode]` to enable the ZXing C++ decoder. The scanner also supports injected decoders without that dependency and reports an actionable error when the default decoder is unavailable.
