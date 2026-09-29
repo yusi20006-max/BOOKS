@@ -28,7 +28,7 @@ def build_server(repo:BookRepository)->MCPServer:
     server.register("search_books",lambda query,limit=100:[dict(x) for x in repo.search(query,limit)])
     server.register("get_book",lambda book_id: (dict(x) if (x:=repo.get(book_id)) else None))
     server.register("list_library",lambda limit=100:[dict(x) for x in repo.list(limit)])
-    server.register("search_notes",lambda query: repo.search(query))
+    server.register("search_notes",lambda query: [dict(x) for x in repo.search(query)])
     server.register("get_statistics",repo.reading_statistics)
     server.register("delete_book",repo.delete,write=True)
     return server

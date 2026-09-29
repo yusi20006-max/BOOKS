@@ -87,3 +87,80 @@ def test_rate_limit_and_pagination_validation(tmp_path):
     finally:
         server.shutdown()
         thread.join(timeout=3)
+
+
+def test_mcp_search_notes_is_serializable(tmp_path):
+    server, thread = start_server(tmp_path)
+    try:
+        status, payload = request(
+            server, "POST", "/mcp",
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+             "params": {"name": "search_notes", "arguments": {"query": "test"}}},
+        )
+        assert status == 200
+        assert payload["jsonrpc"] == "2.0"
+        assert isinstance(payload.get("result"), list)
+    finally:
+        server.shutdown()
+        thread.join(timeout=3)
+
+
+def test_mcp_non_dict_request_returns_invalid(tmp_path):
+    server, thread = start_server(tmp_path)
+    try:
+        status, payload = request(server, "POST", "/mcp", ["not", "a", "dict"])
+        assert status == 200
+        assert payload["error"]["code"] == -32600
+    finally:
+        server.shutdown()
+        thread.join(timeout=3)
+
+
+def test_search_offset_is_honored(tmp_path):
+    from books.db import BookRepository, Database
+
+    db = Database(str(tmp_path / "books.sqlite3"))
+    db.migrate()
+    repo = BookRepository(db)
+    repo.create({"id": "s1", "title": "offset book alpha"})
+    repo.create({"id": "s2", "title": "offset book beta"})
+    server, thread = start_server(tmp_path)
+    try:
+        status, first = request(server, "GET", "/v1/search?q=offset&limit=1&offset=0")
+        assert status == 200 and len(first) == 1
+        status, second = request(server, "GET", "/v1/search?q=offset&limit=1&offset=1")
+        assert status == 200 and len(second) == 1
+        assert first[0]["id"] != second[0]["id"]
+    finally:
+        server.shutdown()
+        thread.join(timeout=3)
+
+
+def test_mcp_backend_error_maps_to_internal(tmp_path):
+    from books.runtime import Runtime
+
+    class FailingRepo:
+        db = None
+
+        def search(self, *args, **kwargs):
+            raise RuntimeError("boom")
+
+        def list(self, *args, **kwargs):
+            raise RuntimeError("boom")
+
+        def get(self, *args, **kwargs):
+            raise RuntimeError("boom")
+
+        def reading_statistics(self, *args, **kwargs):
+            raise RuntimeError("boom")
+
+        def delete(self, *args, **kwargs):
+            raise RuntimeError("boom")
+
+    runtime = Runtime(FailingRepo(), token=None)
+    payload = runtime.mcp_call(
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+         "params": {"name": "list_library", "arguments": {}}},
+        client_id="test",
+    )
+    assert payload["error"]["code"] == -32603

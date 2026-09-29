@@ -20,7 +20,9 @@ class Runtime:
         self.sync=SyncRuntime(database or repository.db)
 
     def mcp_call(self, request: dict, *, client_id: str) -> dict:
-        request_id=request.get("id")
+        request_id=request.get("id") if isinstance(request, dict) else None
+        if not isinstance(request, dict):
+            return {"jsonrpc":"2.0","id":request_id,"error":{"code":-32600,"message":"invalid request"}}
         if request.get("jsonrpc")!="2.0" or request.get("method")!="tools/call":
             return {"jsonrpc":"2.0","id":request_id,"error":{"code":-32600,"message":"invalid request"}}
         params=request.get("params")
@@ -35,6 +37,8 @@ class Runtime:
             return {"jsonrpc":"2.0","id":request_id,"error":{"code":-32001,"message":str(exc)}}
         except (TypeError,ValueError) as exc:
             return {"jsonrpc":"2.0","id":request_id,"error":{"code":-32602,"message":str(exc)}}
+        except Exception:  # noqa: BLE001 - map backend failures to JSON-RPC internal error
+            return {"jsonrpc":"2.0","id":request_id,"error":{"code":-32603,"message":"internal error"}}
         return {"jsonrpc":"2.0","id":request_id,"result":result}
 
 
@@ -60,11 +64,15 @@ def make_handler(runtime: Runtime):
                     self._write(200,{"changes":[asdict(c) for c in runtime.sync.changes_since(since)]})
                 except (ValueError,TypeError): self._write(400,{"error":"since must be a non-negative integer"})
                 except APIError as exc: self._write(exc.status,{"error":exc.message})
+                except Exception:  # noqa: BLE001 - never drop connection, return 500 JSON
+                    self._write(500,{"error":"internal error"})
                 return
             try:
                 self._write(200,runtime.api.request("GET",parsed.path,token=self._token(),query=query,client_id=self.client_address[0]))
             except APIError as exc: self._write(exc.status,{"error":exc.message})
             except (TypeError,ValueError): self._write(400,{"error":"invalid request"})
+            except Exception:  # noqa: BLE001 - never drop connection, return 500 JSON
+                self._write(500,{"error":"internal error"})
         def do_POST(self):
             try:
                 length=int(self.headers.get("Content-Length","0"))
@@ -88,6 +96,8 @@ def make_handler(runtime: Runtime):
                 self._write(404,{"error":"endpoint not found"})
             except APIError as exc: self._write(exc.status,{"error":exc.message})
             except (json.JSONDecodeError,TypeError,ValueError): self._write(400,{"error":"invalid JSON request"})
+            except Exception:  # noqa: BLE001 - never drop connection, return 500 JSON
+                self._write(500,{"error":"internal error"})
         def log_message(self,*_args): return
     return Handler
 
