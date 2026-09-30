@@ -17,7 +17,7 @@ def serialize_book_row(row: Mapping[str, Any] | Any) -> dict[str, Any]:
     parsed ``authors/translators/genres/subjects`` (lists) and
     ``source_ids`` (dict). Malformed JSON degrades to ``[]``/``{}``.
     """
-    data = dict(row) if not isinstance(row, dict) else dict(row)
+    data = dict(row)
     for field in ("authors", "translators", "genres", "subjects"):
         raw = data.get(f"{field}_json")
         try:
