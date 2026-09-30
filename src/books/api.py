@@ -1,11 +1,36 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from time import monotonic
 from typing import Any
 
 from . import __version__
 from .db import BookRepository
+
+
+def serialize_book_row(row: Mapping[str, Any] | Any) -> dict[str, Any]:
+    """Map a storage row to the public API shape.
+
+    Keeps raw ``*_json`` columns for backward compatibility while adding
+    parsed ``authors/translators/genres/subjects`` (lists) and
+    ``source_ids`` (dict). Malformed JSON degrades to ``[]``/``{}``.
+    """
+    data = dict(row) if not isinstance(row, dict) else dict(row)
+    for field in ("authors", "translators", "genres", "subjects"):
+        raw = data.get(f"{field}_json")
+        try:
+            parsed = json.loads(raw) if isinstance(raw, str) else list(raw or [])
+        except (ValueError, TypeError):
+            parsed = []
+        data[field] = list(parsed) if isinstance(parsed, list) else []
+    try:
+        source_ids = json.loads(data.get("source_ids_json") or "{}")
+    except (ValueError, TypeError):
+        source_ids = {}
+    data["source_ids"] = dict(source_ids) if isinstance(source_ids, dict) else {}
+    return data
 
 
 @dataclass(slots=True)
@@ -82,15 +107,15 @@ class BooksAPI:
         body = body or {}
         if method == "GET" and path == "/v1/books":
             limit, offset = self._pagination(query)
-            return [dict(x) for x in self.repo.list(limit, offset)]
+            return [serialize_book_row(x) for x in self.repo.list(limit, offset)]
         if method == "GET" and path == "/v1/search":
             limit, offset = self._pagination(query)
-            return [dict(x) for x in self.repo.search(query.get("q", ""), limit, offset)]
+            return [serialize_book_row(x) for x in self.repo.search(query.get("q", ""), limit, offset)]
         if method == "GET" and path.startswith("/v1/books/"):
             row = self.repo.get(path.rsplit("/", 1)[1])
             if row is None:
                 raise APIError(404, "book not found")
-            return dict(row)
+            return serialize_book_row(row)
         raise APIError(404, "endpoint not found")
 
     @staticmethod
