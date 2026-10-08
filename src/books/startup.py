@@ -11,6 +11,8 @@ import sys
 import time
 from dataclasses import dataclass
 
+from .security import redact_secrets, validate_secret
+
 
 @dataclass(frozen=True)
 class PortOwner:
@@ -134,10 +136,13 @@ def stop_books(owner: PortOwner, timeout: float = 5.0) -> None:
 
 
 def build_runtime_command(args: argparse.Namespace) -> list[str]:
-    command = [sys.executable, "-m", "books.runtime", "--host", args.host, "--port", str(args.port), "--db", args.db]
-    if args.token is not None:
-        command += ["--token", args.token]
-    return command
+    """Build the runtime child command without secrets on the command line.
+
+    The API token is handed to the child through the ``BOOKS_API_TOKEN``
+    environment variable (set by :func:`main` before ``execv``), so it never
+    appears in ``ps`` output or process arguments.
+    """
+    return [sys.executable, "-m", "books.runtime", "--host", args.host, "--port", str(args.port), "--db", args.db]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -145,12 +150,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default=os.getenv("BOOKS_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.getenv("BOOKS_PORT", "8080")))
     parser.add_argument("--db", default=os.getenv("BOOKS_DB_PATH", "books.sqlite3"))
-    parser.add_argument("--token", default=os.getenv("BOOKS_API_TOKEN"))
+    parser.add_argument(
+        "--token",
+        default=os.getenv("BOOKS_API_TOKEN"),
+        help="API bearer token (prefer the BOOKS_API_TOKEN environment variable; "
+        "the token is passed to the runtime via the environment, never via argv)",
+    )
     args = parser.parse_args(argv)
 
     owner = port_owner(args.port)
     if owner is not None:
-        print(f"BOOKS startup: port {args.port} is occupied by PID {owner.pid}: {owner.command}", flush=True)
+        # The occupying command line may itself contain a `--token` secret
+        # (e.g. from an older invocation), so it is always redacted in logs.
+        print(f"BOOKS startup: port {args.port} is occupied by PID {owner.pid}: {redact_secrets(owner.command)}", flush=True)
         if not is_books_process(owner):
             print("BOOKS startup: foreign process or unknown owner detected; refusing to stop it.", flush=True)
             return 2
@@ -162,6 +174,12 @@ def main(argv: list[str] | None = None) -> int:
         raise StartupError(f"port {args.port} is still occupied after BOOKS stop")
 
     print(f"BOOKS startup: starting runtime on {args.host}:{args.port}", flush=True)
+    if args.token is not None:
+        if not validate_secret(args.token):
+            print("BOOKS startup: warning: the configured API token is weak; use a longer random value", flush=True)
+        # The child inherits the environment across execv, so the token never
+        # appears in `ps` output or process arguments.
+        os.environ["BOOKS_API_TOKEN"] = args.token
     os.execv(sys.executable, build_runtime_command(args))
     return 0
 

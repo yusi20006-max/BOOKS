@@ -11,6 +11,7 @@ from typing import Any, ClassVar
 
 from .models import Book
 from .normalization import normalize_isbn, normalize_text
+from .security import harden_file
 
 
 class Database:
@@ -62,6 +63,9 @@ class Database:
                     (version, ", ".join(m.name for m in migrations)),
                 )
                 count += 1
+        if str(self.path) != ":memory:" and self.path.exists():
+            # The database holds the personal library; keep it owner-only.
+            harden_file(str(self.path))
         return count
 
 

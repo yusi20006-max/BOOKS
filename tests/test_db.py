@@ -63,6 +63,14 @@ def test_duplicate_isbn_is_rejected(tmp_path):
         repo.create(book("b2"))
 
 
+def test_migrate_hardens_database_file_permissions(tmp_path):
+    import os
+
+    db_path = tmp_path / "books.sqlite3"
+    Database(db_path).migrate()
+    assert os.stat(db_path).st_mode & 0o777 == 0o600
+
+
 def test_get_by_isbn_finds_hyphenated_and_persian_digits(tmp_path):
     db = Database(tmp_path / "books.sqlite3")
     db.migrate()

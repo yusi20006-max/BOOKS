@@ -6,6 +6,8 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .security import harden_file
+
 
 class BackupService:
     """Create and restore validated SQLite backups atomically."""
@@ -69,6 +71,7 @@ class BackupService:
                     source_conn.close()
                 self._validate_file(temp_destination)
                 os.replace(temp_destination, self.database_path)
+                harden_file(str(self.database_path))
             finally:
                 if temp_destination.exists():
                     temp_destination.unlink()
