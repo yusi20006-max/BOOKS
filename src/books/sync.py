@@ -225,51 +225,51 @@ class SyncRuntime:
         personal = payload.get("personal")
         organization = payload.get("organization")
         if reading is None and personal is None and organization is None:
-            return
+        return
         if conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone() is None:
-            raise ValueError("book not found")
+        raise ValueError("book not found")
         if isinstance(reading, dict):
-                allowed = {"unread", "reading", "finished", "abandoned"}
-                status = reading.get("status")
-                current_page = reading.get("current_page")
-                progress = reading.get("progress")
-                started_at = reading.get("started_at")
-                finished_at = reading.get("finished_at")
-                if status is not None and status not in allowed:
-                    raise ValueError("invalid reading status")
-                if current_page is not None and (not isinstance(current_page, int) or current_page < 0):
-                    raise ValueError("invalid reading current page")
-                if progress is not None and (not isinstance(progress, int) or not 0 <= progress <= 100):
-                    raise ValueError("invalid reading progress")
-                sets=[]; values=[]
-                for column, value in (("reading_status", status), ("reading_current_page", current_page), ("reading_progress", progress), ("reading_started_at", started_at), ("reading_finished_at", finished_at)):
-                    if column.replace("reading_", "") in reading:
-                        sets.append(f"{column} = ?"); values.append(value)
-                if sets:
-                    sets.append("updated_at = ?"); values.append(datetime.now(timezone.utc).isoformat()); values.append(book_id)
-                    conn.execute(f"UPDATE books SET {', '.join(sets)} WHERE id = ?", values)
-            if isinstance(personal, dict):
-                rating = personal.get("rating")
-                if rating is not None and (not isinstance(rating, int) or not 1 <= rating <= 5):
-                    raise ValueError("invalid personal rating")
-                values = (book_id, rating, str(personal.get("note", "")).strip(), str(personal.get("quote", "")).strip(), int(bool(personal.get("favorite", False))), datetime.now(timezone.utc).isoformat())
-                conn.execute("""INSERT INTO book_personal(book_id,rating,note,quote,favorite,updated_at) VALUES(?,?,?,?,?,?)
-                    ON CONFLICT(book_id) DO UPDATE SET rating=excluded.rating,note=excluded.note,quote=excluded.quote,favorite=excluded.favorite,updated_at=excluded.updated_at""", values)
-            if isinstance(organization, dict):
-                tags = tuple(dict.fromkeys(normalize_text(str(x)) for x in organization.get("tags", []) if normalize_text(str(x))))
-                shelves = tuple(dict.fromkeys(normalize_text(str(x)) for x in organization.get("shelves", []) if normalize_text(str(x))))
-                if "tags" in organization:
-                    conn.execute("DELETE FROM book_tags WHERE book_id = ?", (book_id,))
-                    for name in tags:
-                        conn.execute("INSERT OR IGNORE INTO tags(id,name) VALUES (?,?)", (str(uuid.uuid4()), name))
-                        row=conn.execute("SELECT id FROM tags WHERE name=?", (name,)).fetchone()
-                        conn.execute("INSERT OR IGNORE INTO book_tags(book_id,tag_id) VALUES (?,?)", (book_id,row["id"]))
-                if "shelves" in organization:
-                    conn.execute("DELETE FROM book_shelves WHERE book_id = ?", (book_id,))
-                    for name in shelves:
-                        conn.execute("INSERT OR IGNORE INTO shelves(id,name) VALUES (?,?)", (str(uuid.uuid4()), name))
-                        row=conn.execute("SELECT id FROM shelves WHERE name=?", (name,)).fetchone()
-                        conn.execute("INSERT OR IGNORE INTO book_shelves(book_id,shelf_id) VALUES (?,?)", (book_id,row["id"]))
+            allowed = {"unread", "reading", "finished", "abandoned"}
+            status = reading.get("status")
+            current_page = reading.get("current_page")
+            progress = reading.get("progress")
+            started_at = reading.get("started_at")
+            finished_at = reading.get("finished_at")
+            if status is not None and status not in allowed:
+                raise ValueError("invalid reading status")
+            if current_page is not None and (not isinstance(current_page, int) or current_page < 0):
+                raise ValueError("invalid reading current page")
+            if progress is not None and (not isinstance(progress, int) or not 0 <= progress <= 100):
+                raise ValueError("invalid reading progress")
+            sets=[]; values=[]
+            for column, value in (("reading_status", status), ("reading_current_page", current_page), ("reading_progress", progress), ("reading_started_at", started_at), ("reading_finished_at", finished_at)):
+                if column.replace("reading_", "") in reading:
+                    sets.append(f"{column} = ?"); values.append(value)
+            if sets:
+                sets.append("updated_at = ?"); values.append(datetime.now(timezone.utc).isoformat()); values.append(book_id)
+                conn.execute(f"UPDATE books SET {', '.join(sets)} WHERE id = ?", values)
+        if isinstance(personal, dict):
+            rating = personal.get("rating")
+            if rating is not None and (not isinstance(rating, int) or not 1 <= rating <= 5):
+                raise ValueError("invalid personal rating")
+            values = (book_id, rating, str(personal.get("note", "")).strip(), str(personal.get("quote", "")).strip(), int(bool(personal.get("favorite", False))), datetime.now(timezone.utc).isoformat())
+            conn.execute("""INSERT INTO book_personal(book_id,rating,note,quote,favorite,updated_at) VALUES(?,?,?,?,?,?)
+                ON CONFLICT(book_id) DO UPDATE SET rating=excluded.rating,note=excluded.note,quote=excluded.quote,favorite=excluded.favorite,updated_at=excluded.updated_at""", values)
+        if isinstance(organization, dict):
+            tags = tuple(dict.fromkeys(normalize_text(str(x)) for x in organization.get("tags", []) if normalize_text(str(x))))
+            shelves = tuple(dict.fromkeys(normalize_text(str(x)) for x in organization.get("shelves", []) if normalize_text(str(x))))
+            if "tags" in organization:
+                conn.execute("DELETE FROM book_tags WHERE book_id = ?", (book_id,))
+                for name in tags:
+                    conn.execute("INSERT OR IGNORE INTO tags(id,name) VALUES (?,?)", (str(uuid.uuid4()), name))
+                    row=conn.execute("SELECT id FROM tags WHERE name=?", (name,)).fetchone()
+                    conn.execute("INSERT OR IGNORE INTO book_tags(book_id,tag_id) VALUES (?,?)", (book_id,row["id"]))
+            if "shelves" in organization:
+                conn.execute("DELETE FROM book_shelves WHERE book_id = ?", (book_id,))
+                for name in shelves:
+                    conn.execute("INSERT OR IGNORE INTO shelves(id,name) VALUES (?,?)", (str(uuid.uuid4()), name))
+                    row=conn.execute("SELECT id FROM shelves WHERE name=?", (name,)).fetchone()
+                    conn.execute("INSERT OR IGNORE INTO book_shelves(book_id,shelf_id) VALUES (?,?)", (book_id,row["id"]))
 
     def changes_since(self, version=0):
         with self.db.connect() as conn:
