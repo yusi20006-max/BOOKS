@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import time
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .db import BookRepository, Database
+from .db import BookRepository, Database, transaction
 from .models import Book
+from .normalization import normalize_text
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,9 +37,20 @@ class Conflict:
 
 
 def make_change(entity, entity_id, operation, payload, version=1):
+    normalized_payload = dict(payload)
+    digest = hashlib.sha256(
+        json.dumps(
+            normalized_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode()
+    ).hexdigest()[:16]
     return Change(
-        f"{entity}:{entity_id}:{version}", entity, entity_id, str(operation), version,
-        dict(payload), datetime.now(timezone.utc).isoformat(),
+        f"{entity}:{entity_id}:{version}:{digest}",
+        entity,
+        entity_id,
+        str(operation),
+        version,
+        normalized_payload,
+        datetime.now(timezone.utc).isoformat(),
     )
 
 
@@ -156,27 +170,21 @@ class SyncRuntime:
     def apply(self, change: Change) -> bool:
         if change.entity != "book":
             raise ValueError("unsupported sync entity")
-        with self.db.connect() as conn:
-            existing=conn.execute("SELECT version FROM sync_changes WHERE id=?",(change.id,)).fetchone()
-            if existing: return False
-            current=conn.execute("SELECT * FROM books WHERE id=?",(change.entity_id,)).fetchone()
-        if change.operation == "delete":
-            self.repo.delete(change.entity_id)
-        elif change.operation in {"create","update","upsert"}:
-            payload=dict(change.payload); payload["id"]=change.entity_id
-            if current:
-                book=Book(
-                    title=payload.get("title",""), original_title=payload.get("original_title"),
-                    authors=payload.get("authors",[]), translators=payload.get("translators",[]),
-                    publisher=payload.get("publisher"), pages=payload.get("pages"),
-                    publication_year=payload.get("publication_year"), isbn10=payload.get("isbn10"),
-                    isbn13=payload.get("isbn13"), language=payload.get("language"),
-                    genres=payload.get("genres",[]), subjects=payload.get("subjects",[]),
-                    summary=payload.get("summary"), cover_url=payload.get("cover_url"),
-                    source_ids=payload.get("source_ids",{}), notes=payload.get("notes"),
-                )
-                self.repo.update_book(change.entity_id,book)
+        if change.operation not in {"create", "update", "upsert", "delete"}:
+            raise ValueError("unsupported sync operation")
+
+        with transaction(self.db) as conn:
+            existing = conn.execute("SELECT version FROM sync_changes WHERE id = ?", (change.id,)).fetchone()
+            if existing:
+                return False
+            current = conn.execute("SELECT * FROM books WHERE id = ?", (change.entity_id,)).fetchone()
+
+            if change.operation == "delete":
+                applied = current is not None
+                if applied:
+                    conn.execute("DELETE FROM books WHERE id = ?", (change.entity_id,))
             else:
+                payload = dict(change.payload)
                 book = Book(
                     title=payload.get("title", ""),
                     original_title=payload.get("original_title"),
@@ -195,12 +203,74 @@ class SyncRuntime:
                     source_ids=payload.get("source_ids", {}),
                     notes=payload.get("notes"),
                 )
-                self.repo.create_book(book, book_id=change.entity_id)
-        else:
-            raise ValueError("unsupported sync operation")
-        with self.db.connect() as conn:
-            conn.execute("INSERT INTO sync_changes(id,entity,entity_id,operation,version,payload_json,changed_at) VALUES(?,?,?,?,?,?,?)",(change.id,change.entity,change.entity_id,change.operation,change.version,json.dumps(change.payload,ensure_ascii=False),change.changed_at))
-        return True
+                now = datetime.now(timezone.utc).isoformat()
+                values = (change.entity_id, book.title, book.original_title,
+                    json.dumps(book.authors, ensure_ascii=False), json.dumps(book.translators, ensure_ascii=False),
+                    book.publisher, book.pages, book.publication_year, book.isbn10, book.isbn13, book.language,
+                    json.dumps(book.genres, ensure_ascii=False), json.dumps(book.subjects, ensure_ascii=False),
+                    book.summary, book.cover_url, json.dumps(dict(book.source_ids), ensure_ascii=False), book.notes, now, now)
+                if current is None:
+                    conn.execute("INSERT INTO books(id,title,original_title,authors_json,translators_json,publisher,pages,publication_year,isbn10,isbn13,language,genres_json,subjects_json,summary,cover_url,source_ids_json,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", values)
+                else:
+                    conn.execute("UPDATE books SET title=?,original_title=?,authors_json=?,translators_json=?,publisher=?,pages=?,publication_year=?,isbn10=?,isbn13=?,language=?,genres_json=?,subjects_json=?,summary=?,cover_url=?,source_ids_json=?,notes=?,updated_at=? WHERE id=?", values[1:-1] + (change.entity_id,))
+                self._apply_extended(change.entity_id, payload, conn)
+                applied = True
+
+            conn.execute("INSERT INTO sync_changes(id,entity,entity_id,operation,version,payload_json,changed_at) VALUES(?,?,?,?,?,?,?)",
+                (change.id, change.entity, change.entity_id, change.operation, change.version, json.dumps(change.payload, ensure_ascii=False), change.changed_at))
+            return applied
+
+    def _apply_extended(self, book_id: str, payload: dict[str, Any], conn) -> None:
+        """Apply sync-owned extended book state; omitted sections remain unchanged."""
+        reading = payload.get("reading")
+        personal = payload.get("personal")
+        organization = payload.get("organization")
+        if reading is None and personal is None and organization is None:
+            return
+        if conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone() is None:
+            raise ValueError("book not found")
+        if isinstance(reading, dict):
+            allowed = {"unread", "reading", "finished", "abandoned"}
+            status = reading.get("status")
+            current_page = reading.get("current_page")
+            progress = reading.get("progress")
+            started_at = reading.get("started_at")
+            finished_at = reading.get("finished_at")
+            if status is not None and status not in allowed:
+                raise ValueError("invalid reading status")
+            if current_page is not None and (not isinstance(current_page, int) or current_page < 0):
+                raise ValueError("invalid reading current page")
+            if progress is not None and (not isinstance(progress, int) or not 0 <= progress <= 100):
+                raise ValueError("invalid reading progress")
+            sets=[]; values=[]
+            for column, value in (("reading_status", status), ("reading_current_page", current_page), ("reading_progress", progress), ("reading_started_at", started_at), ("reading_finished_at", finished_at)):
+                if column.replace("reading_", "") in reading:
+                    sets.append(f"{column} = ?"); values.append(value)
+            if sets:
+                sets.append("updated_at = ?"); values.append(datetime.now(timezone.utc).isoformat()); values.append(book_id)
+                conn.execute(f"UPDATE books SET {', '.join(sets)} WHERE id = ?", values)
+        if isinstance(personal, dict):
+            rating = personal.get("rating")
+            if rating is not None and (not isinstance(rating, int) or not 1 <= rating <= 5):
+                raise ValueError("invalid personal rating")
+            values = (book_id, rating, str(personal.get("note", "")).strip(), str(personal.get("quote", "")).strip(), int(bool(personal.get("favorite", False))), datetime.now(timezone.utc).isoformat())
+            conn.execute("""INSERT INTO book_personal(book_id,rating,note,quote,favorite,updated_at) VALUES(?,?,?,?,?,?)
+                ON CONFLICT(book_id) DO UPDATE SET rating=excluded.rating,note=excluded.note,quote=excluded.quote,favorite=excluded.favorite,updated_at=excluded.updated_at""", values)
+        if isinstance(organization, dict):
+            tags = tuple(dict.fromkeys(normalize_text(str(x)) for x in organization.get("tags", []) if normalize_text(str(x))))
+            shelves = tuple(dict.fromkeys(normalize_text(str(x)) for x in organization.get("shelves", []) if normalize_text(str(x))))
+            if "tags" in organization:
+                conn.execute("DELETE FROM book_tags WHERE book_id = ?", (book_id,))
+                for name in tags:
+                    conn.execute("INSERT OR IGNORE INTO tags(id,name) VALUES (?,?)", (str(uuid.uuid4()), name))
+                    row=conn.execute("SELECT id FROM tags WHERE name=?", (name,)).fetchone()
+                    conn.execute("INSERT OR IGNORE INTO book_tags(book_id,tag_id) VALUES (?,?)", (book_id,row["id"]))
+            if "shelves" in organization:
+                conn.execute("DELETE FROM book_shelves WHERE book_id = ?", (book_id,))
+                for name in shelves:
+                    conn.execute("INSERT OR IGNORE INTO shelves(id,name) VALUES (?,?)", (str(uuid.uuid4()), name))
+                    row=conn.execute("SELECT id FROM shelves WHERE name=?", (name,)).fetchone()
+                    conn.execute("INSERT OR IGNORE INTO book_shelves(book_id,shelf_id) VALUES (?,?)", (book_id,row["id"]))
 
     def changes_since(self, version=0):
         with self.db.connect() as conn:

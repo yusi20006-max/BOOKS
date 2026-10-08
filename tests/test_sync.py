@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from books.db import Database
 from books.sync import (
     SyncQueue,
@@ -128,3 +130,50 @@ def test_upsert_preserves_structured_fields_on_update(tmp_path):
     assert book["genres_json"] == '["new"]'
     assert book["subjects_json"] == '["new subject"]'
     assert book["source_ids_json"] == '{"source": "new", "other": "2"}'
+
+
+def test_upsert_preserves_extended_book_state(tmp_path):
+    runtime = _runtime(tmp_path)
+    change = make_change(
+        "book", "extended-sync", "upsert",
+        {
+            "title": "Extended sync",
+            "pages": 200,
+            "reading": {"status": "reading", "current_page": 80, "progress": 40, "started_at": "2026-01-01T00:00:00+00:00", "finished_at": None},
+            "personal": {"rating": 5, "note": "important", "quote": "a quote", "favorite": True},
+            "organization": {"tags": ["AI", "books"], "shelves": ["Reading"]},
+        },
+    )
+    assert runtime.apply(change) is True
+    book = runtime.repo.get("extended-sync")
+    assert book["reading_status"] == "reading"
+    assert book["reading_current_page"] == 80
+    assert book["reading_progress"] == 40
+    assert book["reading_started_at"] == "2026-01-01T00:00:00+00:00"
+    personal = runtime.repo.get_personal_data("extended-sync")
+    assert personal["rating"] == 5
+    assert personal["note"] == "important"
+    assert personal["quote"] == "a quote"
+    assert personal["favorite"] == 1
+    assert runtime.repo.get_organization("extended-sync") == (("AI", "books"), ("Reading",))
+
+def test_same_version_distinct_payloads_have_distinct_change_ids(tmp_path):
+    first = make_change("book", "collision", "update", {"title": "one"}, 2)
+    second = make_change("book", "collision", "update", {"title": "two"}, 2)
+    assert first.id != second.id
+
+
+def test_delete_missing_book_is_not_applied(tmp_path):
+    runtime = _runtime(tmp_path)
+    change = make_change("book", "missing-delete", "delete", {})
+    assert runtime.apply(change) is False
+    assert runtime.changes_since()[0].id == change.id
+
+def test_apply_rolls_back_book_and_log_on_failure(tmp_path, monkeypatch):
+    runtime = _runtime(tmp_path)
+    change = make_change("book", "atomic-failure", "upsert", {"title": "Atomic"})
+    monkeypatch.setattr(runtime, "_apply_extended", lambda *_args: (_ for _ in ()).throw(RuntimeError("boom")))
+    with pytest.raises(RuntimeError, match="boom"):
+        runtime.apply(change)
+    assert runtime.repo.get("atomic-failure") is None
+    assert runtime.changes_since() == []

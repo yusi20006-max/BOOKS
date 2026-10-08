@@ -370,6 +370,39 @@ class BookRepository:
             )
             return progress
 
+    def update_reading_dates(
+        self,
+        book_id: str,
+        *,
+        started_at: str | None,
+        finished_at: str | None,
+    ) -> bool:
+        """Persist reading start/finish dates through one validated transaction.
+
+        Replaces the raw ``db.connect()+commit`` write that the transfer import
+        used, so date imports validate and roll back like every other write.
+        """
+        if started_at is None and finished_at is None:
+            raise ValueError("at least one reading date is required")
+        for label, value in (("started_at", started_at), ("finished_at", finished_at)):
+            if value is not None and not str(value).strip():
+                raise ValueError(f"{label} must not be empty")
+        if (
+            started_at is not None
+            and finished_at is not None
+            and str(finished_at) < str(started_at)
+        ):
+            raise ValueError("finished_at must not precede started_at")
+
+        with transaction(self.db) as conn:
+            if conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone() is None:
+                raise ValueError("book not found")
+            result = conn.execute(
+                "UPDATE books SET reading_started_at = ?, reading_finished_at = ? WHERE id = ?",
+                (started_at, finished_at, book_id),
+            )
+            return result.rowcount == 1
+
     def get_personal_data(self, book_id: str) -> sqlite3.Row | None:
         with self.db.connect() as conn:
             return conn.execute(
@@ -439,7 +472,16 @@ class BookRepository:
         *,
         tags: tuple[str, ...],
         shelves: tuple[str, ...],
+        tag_ids: Mapping[str, str] | None = None,
+        shelf_ids: Mapping[str, str] | None = None,
     ) -> None:
+        """Replace a book's tags/shelves.
+
+        ``tag_ids``/``shelf_ids`` map a normalized name to a caller-supplied id so
+        that export -> import round-trips keep their existing identifiers instead
+        of minting a new uuid4 for every name on every import. When an id is not
+        supplied (or collides with a different name) a fresh uuid4 is used.
+        """
         clean_tags = tuple(dict.fromkeys(normalize_text(value) for value in tags if normalize_text(value)))
         clean_shelves = tuple(dict.fromkeys(normalize_text(value) for value in shelves if normalize_text(value)))
         with transaction(self.db) as conn:
@@ -450,28 +492,49 @@ class BookRepository:
             conn.execute("DELETE FROM book_shelves WHERE book_id = ?", (book_id,))
 
             for name in clean_tags:
-                tag_id = str(uuid.uuid4())
-                conn.execute(
-                    "INSERT OR IGNORE INTO tags(id, name) VALUES (?, ?)",
-                    (tag_id, name),
-                )
-                row = conn.execute("SELECT id FROM tags WHERE name = ?", (name,)).fetchone()
+                tag_id = self._resolve_named_id(conn, "tags", name, (tag_ids or {}).get(name))
                 conn.execute(
                     "INSERT INTO book_tags(book_id, tag_id) VALUES (?, ?)",
-                    (book_id, row["id"]),
+                    (book_id, tag_id),
                 )
 
             for name in clean_shelves:
-                shelf_id = str(uuid.uuid4())
-                conn.execute(
-                    "INSERT OR IGNORE INTO shelves(id, name) VALUES (?, ?)",
-                    (shelf_id, name),
-                )
-                row = conn.execute("SELECT id FROM shelves WHERE name = ?", (name,)).fetchone()
+                shelf_id = self._resolve_named_id(conn, "shelves", name, (shelf_ids or {}).get(name))
                 conn.execute(
                     "INSERT INTO book_shelves(book_id, shelf_id) VALUES (?, ?)",
-                    (book_id, row["id"]),
+                    (book_id, shelf_id),
                 )
+
+    @staticmethod
+    def _resolve_named_id(
+        conn: sqlite3.Connection,
+        table: str,
+        name: str,
+        preferred_id: str | None,
+    ) -> str:
+        """Return the id of the row named ``name``, reusing ``preferred_id`` when free.
+
+        Only ``table`` in {"tags", "shelves"} is accepted so the identifier stays
+        internal and cannot be interpolated from caller input.
+        """
+        if table not in {"tags", "shelves"}:
+            raise ValueError("unsupported organization table")
+
+        row = conn.execute(f"SELECT id FROM {table} WHERE name = ?", (name,)).fetchone()
+        if row is not None:
+            return str(row["id"])
+
+        candidate = preferred_id or str(uuid.uuid4())
+        clash = conn.execute(
+            f"SELECT name FROM {table} WHERE id = ?", (candidate,)
+        ).fetchone()
+        if clash is not None:
+            candidate = str(uuid.uuid4())
+        conn.execute(
+            f"INSERT INTO {table}(id, name) VALUES (?, ?)",
+            (candidate, name),
+        )
+        return candidate
 
     def get_metadata_cache(
         self,

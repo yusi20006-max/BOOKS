@@ -143,7 +143,6 @@ def test_save_flow_rejects_invalid_isbn_without_writing(app):
     _submit(at, "اعتبارسنجی و پیش‌نمایش")
     inputs = {field.label: field for field in at.text_input}
     inputs["ISBN-13"].set_value("invalid-isbn")
-    at.run()
     _submit(at, "اعتبارسنجی و پیش‌نمایش")
     assert "اطلاعات واردشده معتبر نیست" in "".join(message.value for message in at.error)
     assert not _repository().list(limit=100)
