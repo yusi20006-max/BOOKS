@@ -154,3 +154,15 @@ def test_upsert_preserves_extended_book_state(tmp_path):
     assert personal["quote"] == "a quote"
     assert personal["favorite"] == 1
     assert runtime.repo.get_organization("extended-sync") == (("AI", "books"), ("Reading",))
+
+def test_same_version_distinct_payloads_have_distinct_change_ids(tmp_path):
+    first = make_change("book", "collision", "update", {"title": "one"}, 2)
+    second = make_change("book", "collision", "update", {"title": "two"}, 2)
+    assert first.id != second.id
+
+
+def test_delete_missing_book_is_not_applied(tmp_path):
+    runtime = _runtime(tmp_path)
+    change = make_change("book", "missing-delete", "delete", {})
+    assert runtime.apply(change) is False
+    assert runtime.changes_since()[0].id == change.id
