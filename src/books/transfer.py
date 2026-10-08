@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -12,8 +13,30 @@ from .models import Book
 SCHEMA_VERSION = 1
 
 
+@dataclass(frozen=True, slots=True)
+class ImportReport:
+    """Outcome of an import run.
+
+    ``imported`` counts newly created books, ``updated`` counts rows matched by
+    their exported id and written back, and ``skipped`` records every row that
+    was not applied together with a human-readable reason, so a re-import never
+    fails silently.
+    """
+
+    imported: int = 0
+    updated: int = 0
+    skipped: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def skipped_count(self) -> int:
+        return len(self.skipped)
+
+    def __int__(self) -> int:
+        return self.imported + self.updated
+
+
 class BookTransferService:
-    """Schema-versioned JSON/CSV transfer with merge-only imports."""
+    """Schema-versioned JSON/CSV transfer with explicit merge/update imports."""
 
     CSV_FIELDS = (
         "id", "title", "original_title", "authors", "translators", "publisher",
@@ -47,21 +70,27 @@ class BookTransferService:
             writer.writerow(self._csv_row(row))
         return output.getvalue()
 
-    def import_json(self, payload: str) -> int:
+    def import_json(self, payload: str) -> ImportReport:
         data = self._parse_json(payload)
         return self._import_snapshot(data)
 
-    def import_csv(self, payload: str) -> int:
+    def import_csv(self, payload: str) -> ImportReport:
         if len(payload.encode("utf-8")) > 10 * 1024 * 1024:
             raise ValueError("import payload exceeds 10 MiB")
         stream = io.StringIO(payload, newline="")
         reader = csv.DictReader(stream)
         if tuple(reader.fieldnames or ()) != self.CSV_FIELDS:
             raise ValueError("unsupported CSV schema")
-        imported = 0
+        imported = updated = 0
+        skipped: list[tuple[str, str]] = []
         for row in reader:
-            imported += self._import_book_row(self._book_row_from_csv(row))
-        return imported
+            row_imported, row_updated, row_skipped = self._import_book_row(
+                self._book_row_from_csv(row)
+            )
+            imported += row_imported
+            updated += row_updated
+            skipped.extend(row_skipped)
+        return ImportReport(imported, updated, tuple(skipped))
 
     def _snapshot(self) -> dict[str, Any]:
         with self.repository.db.connect() as conn:
@@ -101,8 +130,10 @@ class BookTransferService:
                 note=p.get("note"),
                 quote=p.get("quote"),
                 favorite=p.get("favorite", 0),
-                tags="|".join(tag_map.get(book["id"], ())),
-                shelves="|".join(shelf_map.get(book["id"], ())),
+                # JSON arrays keep multi-value cells intact: a value that itself
+                # contains "|" can no longer be split apart on import.
+                tags=json.dumps(tag_map.get(book["id"], ()), ensure_ascii=False),
+                shelves=json.dumps(shelf_map.get(book["id"], ()), ensure_ascii=False),
             )
             rows.append(row)
         return rows
@@ -120,10 +151,6 @@ class BookTransferService:
                 elif field == "source_ids":
                     value = json.dumps(value or {}, ensure_ascii=False)
             result[field] = "" if value is None else str(value)
-        for field in ("authors", "translators", "genres", "subjects"):
-            if result[field].startswith("["):
-                values = json.loads(result[field])
-                result[field] = "|".join(values)
         return result
 
     @staticmethod
@@ -138,7 +165,7 @@ class BookTransferService:
             raise ValueError("unsupported JSON schema version")
         return data
 
-    def _import_snapshot(self, data: dict[str, Any]) -> int:
+    def _import_snapshot(self, data: dict[str, Any]) -> ImportReport:
         books = data.get("books")
         if not isinstance(books, list):
             raise TypeError("JSON books must be a list")
@@ -166,24 +193,39 @@ class BookTransferService:
             if isinstance(relation, dict) and relation.get("book_id") and relation.get("shelf_id") in shelves:
                 shelf_map.setdefault(relation["book_id"], []).append(shelves[relation["shelf_id"]])
 
-        imported = 0
+        imported = updated = 0
+        skipped: list[tuple[str, str]] = []
         for row in books:
             if not isinstance(row, dict):
                 raise TypeError("invalid book row")
             enriched = dict(row)
-            p = personal.get(str(row.get("id")), {})
+            book_key = str(row.get("id"))
+            p = personal.get(book_key, {})
             enriched.update(
                 rating=p.get("rating"),
                 note=p.get("note"),
                 quote=p.get("quote"),
                 favorite=p.get("favorite", 0),
-                tags=tag_map.get(str(row.get("id")), ()),
-                shelves=shelf_map.get(str(row.get("id")), ()),
+                tags=tag_map.get(book_key, ()),
+                shelves=shelf_map.get(book_key, ()),
+                # Preserve exported identifiers so tags/shelves keep their ids
+                # across an export -> import round-trip.
+                tag_ids=self._relation_ids(data.get("book_tags", []), book_key, "tag_id", tags),
+                shelf_ids=self._relation_ids(data.get("book_shelves", []), book_key, "shelf_id", shelves),
             )
-            imported += self._import_book_row(enriched)
-        return imported
+            row_imported, row_updated, row_skipped = self._import_book_row(enriched)
+            imported += row_imported
+            updated += row_updated
+            skipped.extend(row_skipped)
+        return ImportReport(imported, updated, tuple(skipped))
 
-    def _import_book_row(self, row: dict[str, Any]) -> int:
+    def _import_book_row(self, row: dict[str, Any]) -> tuple[int, int, tuple[tuple[str, str], ...]]:
+        """Apply one row.
+
+        Returns ``(imported, updated, skipped)`` where each skipped entry is a
+        ``(book_id, reason)`` pair, so callers can always explain what was not
+        applied instead of silently reporting zero.
+        """
         title = str(row.get("title") or "").strip()
         if not title:
             raise ValueError("book title is required")
@@ -206,24 +248,44 @@ class BookTransferService:
             notes=row.get("notes"),
         )
 
-        if row.get("id") and self.repository.get(str(row["id"])) is not None:
-            return 0
-        if self.repository.find_duplicates(book):
-            return 0
+        row_id = str(row["id"]) if row.get("id") else None
+        existing = self.repository.get(row_id) if row_id else None
+        duplicates = self.repository.find_duplicates(book, exclude_id=row_id)
 
-        book_id = self.repository.create_book(book, str(row.get("id")) if row.get("id") else None)
+        if existing is not None:
+            # Matched by exported id: re-importing a corrected file is an update.
+            self.repository.update_book(str(existing["id"]), book)
+            self._apply_row_state(str(existing["id"]), row)
+            return 0, 1, ()
+
+        if duplicates:
+            matched = str(duplicates[0]["id"])
+            reason = f"duplicate of existing book {matched}"
+            if row_id:
+                self.repository.create_book(book, row_id)
+                self._apply_row_state(row_id, row)
+                return 1, 0, ()
+            return 0, 0, ((matched, reason),)
+
+        book_id = self.repository.create_book(book, row_id)
+        self._apply_row_state(book_id, row)
+        return 1, 0, ()
+
+    def _apply_row_state(self, book_id: str, row: dict[str, Any]) -> None:
         if row.get("reading_status"):
             self.repository.update_reading_status(book_id, str(row["reading_status"]))
-        current_page = row.get("reading_current_page")
-        if current_page not in (None, "", "0", 0) and row.get("pages") not in (None, "", 0, "0"):
-            self.repository.update_reading_progress(book_id, int(current_page))
-        if row.get("reading_started_at"):
-            with self.repository.db.connect() as conn:
-                conn.execute(
-                    "UPDATE books SET reading_started_at = ?, reading_finished_at = ? WHERE id = ?",
-                    (row.get("reading_started_at"), row.get("reading_finished_at"), book_id),
-                )
-                conn.commit()
+        current_page = self._int_value(row.get("reading_current_page"))
+        if current_page and row.get("pages") not in (None, "", 0, "0"):
+            self.repository.update_reading_progress(book_id, current_page)
+
+        started_at = row.get("reading_started_at") or None
+        finished_at = row.get("reading_finished_at") or None
+        if started_at or finished_at:
+            self.repository.update_reading_dates(
+                book_id,
+                started_at=started_at,
+                finished_at=finished_at,
+            )
 
         rating = self._int_value(row.get("rating"))
         if rating is not None or row.get("note") or row.get("quote"):
@@ -239,17 +301,45 @@ class BookTransferService:
         tags = self._tuple_value(row.get("tags"))
         shelves = self._tuple_value(row.get("shelves"))
         if tags or shelves:
-            self.repository.set_organization(book_id, tags=tags, shelves=shelves)
-        return 1
+            self.repository.set_organization(
+                book_id,
+                tags=tags,
+                shelves=shelves,
+                tag_ids=self._id_map(row.get("tag_ids")),
+                shelf_ids=self._id_map(row.get("shelf_ids")),
+            )
+
+    @staticmethod
+    def _relation_ids(
+        relations: list[Any],
+        book_key: str,
+        id_field: str,
+        names: dict[str, str],
+    ) -> dict[str, str]:
+        """Map ``name -> exported id`` for one book's relations."""
+        mapping: dict[str, str] = {}
+        for relation in relations:
+            if not isinstance(relation, dict):
+                continue
+            if str(relation.get("book_id")) != book_key:
+                continue
+            identifier = relation.get(id_field)
+            if identifier in names:
+                mapping[names[identifier]] = str(identifier)
+        return mapping
+
+    @staticmethod
+    def _id_map(value: Any) -> dict[str, str] | None:
+        if not isinstance(value, dict) or not value:
+            return None
+        return {str(name): str(identifier) for name, identifier in value.items()}
 
     def _book_row_from_csv(self, row: dict[str, str]) -> dict[str, Any]:
         result = dict(row)
         for field in ("authors", "translators", "genres", "subjects", "tags", "shelves"):
-            result[field] = tuple(
-                item.strip()
-                for item in (row.get(field) or "").split("|")
-                if item.strip()
-            )
+            # Accept both the current JSON-array encoding and legacy "|"-joined
+            # values so previously exported files keep importing unchanged.
+            result[field] = self._tuple_value(row.get(field))
         result["source_ids"] = row.get("source_ids") or "{}"
         return result
 
