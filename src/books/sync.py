@@ -170,27 +170,21 @@ class SyncRuntime:
     def apply(self, change: Change) -> bool:
         if change.entity != "book":
             raise ValueError("unsupported sync entity")
-        with self.db.connect() as conn:
-            existing=conn.execute("SELECT version FROM sync_changes WHERE id=?",(change.id,)).fetchone()
-            if existing: return False
-            current=conn.execute("SELECT * FROM books WHERE id=?",(change.entity_id,)).fetchone()
-        if change.operation == "delete":
-            self.repo.delete(change.entity_id)
-        elif change.operation in {"create","update","upsert"}:
-            payload=dict(change.payload); payload["id"]=change.entity_id
-            if current:
-                book=Book(
-                    title=payload.get("title",""), original_title=payload.get("original_title"),
-                    authors=payload.get("authors",[]), translators=payload.get("translators",[]),
-                    publisher=payload.get("publisher"), pages=payload.get("pages"),
-                    publication_year=payload.get("publication_year"), isbn10=payload.get("isbn10"),
-                    isbn13=payload.get("isbn13"), language=payload.get("language"),
-                    genres=payload.get("genres",[]), subjects=payload.get("subjects",[]),
-                    summary=payload.get("summary"), cover_url=payload.get("cover_url"),
-                    source_ids=payload.get("source_ids",{}), notes=payload.get("notes"),
-                )
-                self.repo.update_book(change.entity_id,book)
+        if change.operation not in {"create", "update", "upsert", "delete"}:
+            raise ValueError("unsupported sync operation")
+
+        with transaction(self.db) as conn:
+            existing = conn.execute("SELECT version FROM sync_changes WHERE id = ?", (change.id,)).fetchone()
+            if existing:
+                return False
+            current = conn.execute("SELECT * FROM books WHERE id = ?", (change.entity_id,)).fetchone()
+
+            if change.operation == "delete":
+                applied = current is not None
+                if applied:
+                    conn.execute("DELETE FROM books WHERE id = ?", (change.entity_id,))
             else:
+                payload = dict(change.payload)
                 book = Book(
                     title=payload.get("title", ""),
                     original_title=payload.get("original_title"),
@@ -209,25 +203,32 @@ class SyncRuntime:
                     source_ids=payload.get("source_ids", {}),
                     notes=payload.get("notes"),
                 )
-                self.repo.create_book(book, book_id=change.entity_id)
-            self._apply_extended(change.entity_id, payload)
-        else:
-            raise ValueError("unsupported sync operation")
-        with self.db.connect() as conn:
-            conn.execute("INSERT INTO sync_changes(id,entity,entity_id,operation,version,payload_json,changed_at) VALUES(?,?,?,?,?,?,?)",(change.id,change.entity,change.entity_id,change.operation,change.version,json.dumps(change.payload,ensure_ascii=False),change.changed_at))
-        return True
+                now = datetime.now(timezone.utc).isoformat()
+                values = (change.entity_id, book.title, book.original_title,
+                    json.dumps(book.authors, ensure_ascii=False), json.dumps(book.translators, ensure_ascii=False),
+                    book.publisher, book.pages, book.publication_year, book.isbn10, book.isbn13, book.language,
+                    json.dumps(book.genres, ensure_ascii=False), json.dumps(book.subjects, ensure_ascii=False),
+                    book.summary, book.cover_url, json.dumps(dict(book.source_ids), ensure_ascii=False), book.notes, now, now)
+                if current is None:
+                    conn.execute("INSERT INTO books(id,title,original_title,authors_json,translators_json,publisher,pages,publication_year,isbn10,isbn13,language,genres_json,subjects_json,summary,cover_url,source_ids_json,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", values)
+                else:
+                    conn.execute("UPDATE books SET title=?,original_title=?,authors_json=?,translators_json=?,publisher=?,pages=?,publication_year=?,isbn10=?,isbn13=?,language=?,genres_json=?,subjects_json=?,summary=?,cover_url=?,source_ids_json=?,notes=?,updated_at=? WHERE id=?", values[1:] + (change.entity_id,))
+                self._apply_extended(change.entity_id, payload, conn)
+                applied = True
 
-    def _apply_extended(self, book_id: str, payload: dict[str, Any]) -> None:
+            conn.execute("INSERT INTO sync_changes(id,entity,entity_id,operation,version,payload_json,changed_at) VALUES(?,?,?,?,?,?,?)",
+                (change.id, change.entity, change.entity_id, change.operation, change.version, json.dumps(change.payload, ensure_ascii=False), change.changed_at))
+            return applied
+    def _apply_extended(self, book_id: str, payload: dict[str, Any], conn) -> None:
         """Apply sync-owned extended book state; omitted sections remain unchanged."""
         reading = payload.get("reading")
         personal = payload.get("personal")
         organization = payload.get("organization")
         if reading is None and personal is None and organization is None:
             return
-        with transaction(self.db) as conn:
-            if conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone() is None:
-                raise ValueError("book not found")
-            if isinstance(reading, dict):
+        if conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone() is None:
+            raise ValueError("book not found")
+        if isinstance(reading, dict):
                 allowed = {"unread", "reading", "finished", "abandoned"}
                 status = reading.get("status")
                 current_page = reading.get("current_page")
