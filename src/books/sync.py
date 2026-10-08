@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
-import uuid
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
