@@ -179,13 +179,14 @@ class BookRepository:
             return result.rowcount == 1
 
     def get_by_isbn(self, isbn: str) -> sqlite3.Row | None:
-        normalized = str(isbn).strip()
-        if not normalized:
+        raw = str(isbn).strip()
+        if not raw:
             return None
+        normalized = normalize_isbn(raw) or raw
         with self.db.connect() as conn:
             return conn.execute(
-                "SELECT * FROM books WHERE isbn10 = ? OR isbn13 = ? LIMIT 1",
-                (normalized, normalized),
+                "SELECT * FROM books WHERE isbn10 IN (?, ?) OR isbn13 IN (?, ?) LIMIT 1",
+                (normalized, raw, normalized, raw),
             ).fetchone()
 
     def get(self, book_id: str) -> sqlite3.Row | None:
@@ -219,7 +220,8 @@ class BookRepository:
         isbn_pattern = f"%{isbn_normalized}%"
         columns = (
             "title", "original_title", "authors_json", "translators_json",
-            "publisher", "isbn10", "isbn13",
+            "publisher", "isbn10", "isbn13", "genres_json", "subjects_json",
+            "summary", "notes",
         )
         clauses = []
         params: list[str] = []
