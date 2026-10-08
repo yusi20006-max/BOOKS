@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+import uuid
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
