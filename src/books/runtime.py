@@ -84,14 +84,27 @@ def make_handler(runtime: Runtime):
                     except APIError as exc: self._write(exc.status,{"error":exc.message})
                     return
                 if self.path=="/v1/sync/changes":
-                    if not isinstance(request,dict) or not request.get("id"): self._write(400,{"error":"change id is required"}); return
+                    if not isinstance(request, dict) or not isinstance(request.get("id"), str) or not request["id"]:
+                        self._write(400, {"error": "change id is required"}); return
                     required={"entity","entity_id","operation","version","payload","changed_at"}
-                    if not required.issubset(request): self._write(400,{"error":"invalid change"})
-                    else:
-                        runtime.api.check_rate_limit(self.client_address[0])
-                        change=Change(request["id"],request["entity"],request["entity_id"],request["operation"],int(request["version"]),request["payload"],request["changed_at"])
-                        applied=runtime.sync.apply(change)
-                        self._write(200,{"accepted":True,"id":change.id,"applied":applied})
+                    if not required.issubset(request):
+                        self._write(400, {"error": "invalid change"}); return
+                    if request["entity"] != "book":
+                        self._write(400, {"error": "entity must be book"}); return
+                    if not isinstance(request["entity_id"], str) or not request["entity_id"]:
+                        self._write(400, {"error": "entity_id must be a non-empty string"}); return
+                    if request["operation"] not in {"create", "update", "upsert", "delete"}:
+                        self._write(400, {"error": "unsupported sync operation"}); return
+                    if isinstance(request["version"], bool) or not isinstance(request["version"], int) or request["version"] < 1:
+                        self._write(400, {"error": "version must be a positive integer"}); return
+                    if not isinstance(request["payload"], dict):
+                        self._write(400, {"error": "payload must be an object"}); return
+                    if not isinstance(request["changed_at"], str) or not request["changed_at"]:
+                        self._write(400, {"error": "changed_at must be a non-empty string"}); return
+                    runtime.api.check_rate_limit(self.client_address[0])
+                    change=Change(request["id"],request["entity"],request["entity_id"],request["operation"],request["version"],request["payload"],request["changed_at"])
+                    applied=runtime.sync.apply(change)
+                    self._write(200,{"accepted":True,"id":change.id,"applied":applied})
                     return
                 self._write(404,{"error":"endpoint not found"})
             except APIError as exc: self._write(exc.status,{"error":exc.message})

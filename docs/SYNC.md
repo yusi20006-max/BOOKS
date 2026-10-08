@@ -27,3 +27,12 @@ Omitted sections are left unchanged on update, which preserves compatibility wit
 | Audiobooks/player state | Local-only for now |
 
 Local-only data is intentionally not included in the current sync envelope and is not silently claimed to be replicated.
+
+
+## Change identity and transactions
+
+Change IDs include a short content digest in addition to entity, entity ID, and version. This prevents two distinct payloads at the same version from colliding while replaying the same change remains idempotent.
+
+Applying a change uses one SQLite transaction for deduplication, book/extended-state writes, and the changelog entry. If any part fails, the whole change is rolled back.
+
+Deleting a missing book is accepted but returns applied=false and is recorded so the same change can be replayed safely.
