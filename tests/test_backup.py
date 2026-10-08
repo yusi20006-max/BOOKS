@@ -52,3 +52,22 @@ def test_restored_database_is_owner_only(tmp_path):
     target = tmp_path / "target.sqlite3"
     BackupService(target).restore_bytes(payload, overwrite=True)
     assert os.stat(target).st_mode & 0o777 == 0o600
+
+
+def test_truncated_database_is_rejected_with_actionable_error(tmp_path):
+    import sqlite3
+
+    source = tmp_path / "truncated.sqlite3"
+    conn = sqlite3.connect(source)
+    conn.execute("CREATE TABLE books (id TEXT PRIMARY KEY, title TEXT)")
+    conn.execute("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+    conn.commit()
+    conn.close()
+
+    service = BackupService(tmp_path / "live.sqlite3")
+    with pytest.raises(ValueError) as exc_info:
+        service._validate_file(source)
+    assert "reading_sessions" in str(exc_info.value)
+
+    with pytest.raises(ValueError):
+        service.restore_bytes(source.read_bytes(), overwrite=True)

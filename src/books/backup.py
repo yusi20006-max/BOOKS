@@ -6,6 +6,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .health import validate_database
 from .security import harden_file
 
 
@@ -78,21 +79,4 @@ class BackupService:
 
     @staticmethod
     def _validate_file(path: Path) -> None:
-        conn = sqlite3.connect(path)
-        try:
-            integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
-            if integrity != "ok":
-                raise ValueError("SQLite integrity check failed")
-            tables = {
-                row[0]
-                for row in conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table'"
-                )
-            }
-            required = {"books", "schema_migrations"}
-            if not required.issubset(tables):
-                raise ValueError("backup is not a valid BOOKS database")
-        except sqlite3.DatabaseError as exc:
-            raise ValueError("invalid SQLite backup") from exc
-        finally:
-            conn.close()
+        validate_database(path)
