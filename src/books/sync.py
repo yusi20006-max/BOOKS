@@ -212,7 +212,7 @@ class SyncRuntime:
                 if current is None:
                     conn.execute("INSERT INTO books(id,title,original_title,authors_json,translators_json,publisher,pages,publication_year,isbn10,isbn13,language,genres_json,subjects_json,summary,cover_url,source_ids_json,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", values)
                 else:
-                    conn.execute("UPDATE books SET title=?,original_title=?,authors_json=?,translators_json=?,publisher=?,pages=?,publication_year=?,isbn10=?,isbn13=?,language=?,genres_json=?,subjects_json=?,summary=?,cover_url=?,source_ids_json=?,notes=?,updated_at=? WHERE id=?", values[1:] + (change.entity_id,))
+                    conn.execute("UPDATE books SET title=?,original_title=?,authors_json=?,translators_json=?,publisher=?,pages=?,publication_year=?,isbn10=?,isbn13=?,language=?,genres_json=?,subjects_json=?,summary=?,cover_url=?,source_ids_json=?,notes=?,updated_at=? WHERE id=?", values[1:-1] + (change.entity_id,))
                 self._apply_extended(change.entity_id, payload, conn)
                 applied = True
 
