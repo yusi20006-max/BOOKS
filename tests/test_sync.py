@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from books.db import Database
 from books.sync import (
     SyncQueue,
@@ -166,3 +168,12 @@ def test_delete_missing_book_is_not_applied(tmp_path):
     change = make_change("book", "missing-delete", "delete", {})
     assert runtime.apply(change) is False
     assert runtime.changes_since()[0].id == change.id
+
+def test_apply_rolls_back_book_and_log_on_failure(tmp_path, monkeypatch):
+    runtime = _runtime(tmp_path)
+    change = make_change("book", "atomic-failure", "upsert", {"title": "Atomic"})
+    monkeypatch.setattr(runtime, "_apply_extended", lambda *_args: (_ for _ in ()).throw(RuntimeError("boom")))
+    with pytest.raises(RuntimeError, match="boom"):
+        runtime.apply(change)
+    assert runtime.repo.get("atomic-failure") is None
+    assert runtime.changes_since() == []
