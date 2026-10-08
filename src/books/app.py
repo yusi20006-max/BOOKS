@@ -612,13 +612,19 @@ def render_transfer() -> None:
         try:
             payload = uploaded.getvalue()
             if uploaded.name.lower().endswith(".json"):
-                count = transfer.import_json(payload.decode("utf-8-sig"))
+                report = transfer.import_json(payload.decode("utf-8-sig"))
             else:
-                count = transfer.import_csv(payload.decode("utf-8-sig"))
+                report = transfer.import_csv(payload.decode("utf-8-sig"))
         except (UnicodeDecodeError, ValueError, KeyError, TypeError) as exc:
             st.error(f"Import ناموفق بود: {exc}")
         else:
-            st.success(f"{count} کتاب جدید وارد شد؛ رکوردهای موجود overwrite نشدند.")
+            st.success(
+                f"{report.imported} کتاب جدید وارد شد و {report.updated} رکورد به‌روزرسانی شد."
+            )
+            if report.skipped_count:
+                st.warning(f"{report.skipped_count} ردیف وارد نشد:")
+                for book_id, reason in report.skipped[:20]:
+                    st.text(f"— {book_id or 'بدون شناسه'}: {reason}")
 
 
 
