@@ -219,15 +219,16 @@ class SyncRuntime:
             conn.execute("INSERT INTO sync_changes(id,entity,entity_id,operation,version,payload_json,changed_at) VALUES(?,?,?,?,?,?,?)",
                 (change.id, change.entity, change.entity_id, change.operation, change.version, json.dumps(change.payload, ensure_ascii=False), change.changed_at))
             return applied
+
     def _apply_extended(self, book_id: str, payload: dict[str, Any], conn) -> None:
         """Apply sync-owned extended book state; omitted sections remain unchanged."""
         reading = payload.get("reading")
         personal = payload.get("personal")
         organization = payload.get("organization")
         if reading is None and personal is None and organization is None:
-        return
+            return
         if conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone() is None:
-        raise ValueError("book not found")
+            raise ValueError("book not found")
         if isinstance(reading, dict):
             allowed = {"unread", "reading", "finished", "abandoned"}
             status = reading.get("status")
