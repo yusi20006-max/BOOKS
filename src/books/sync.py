@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import time
@@ -36,9 +37,20 @@ class Conflict:
 
 
 def make_change(entity, entity_id, operation, payload, version=1):
+    normalized_payload = dict(payload)
+    digest = hashlib.sha256(
+        json.dumps(
+            normalized_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode()
+    ).hexdigest()[:16]
     return Change(
-        f"{entity}:{entity_id}:{version}", entity, entity_id, str(operation), version,
-        dict(payload), datetime.now(timezone.utc).isoformat(),
+        f"{entity}:{entity_id}:{version}:{digest}",
+        entity,
+        entity_id,
+        str(operation),
+        version,
+        normalized_payload,
+        datetime.now(timezone.utc).isoformat(),
     )
 
 
