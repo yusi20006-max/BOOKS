@@ -164,3 +164,52 @@ def test_mcp_backend_error_maps_to_internal(tmp_path):
         client_id="test",
     )
     assert payload["error"]["code"] == -32603
+
+
+def test_health_deep_check_validates_schema(tmp_path):
+    server, thread = start_server(tmp_path)
+    try:
+        status, health = request(server, "GET", "/health?deep=1")
+        assert status == 200 and health == {"status": "ok", "mode": "deep"}
+    finally:
+        server.shutdown()
+        thread.join(timeout=3)
+
+
+def test_health_liveness_stays_cheap_without_db_touch(tmp_path):
+    server, thread = start_server(tmp_path)
+    try:
+        status, health = request(server, "GET", "/health")
+        assert status == 200 and health == {"status": "ok"}
+    finally:
+        server.shutdown()
+        thread.join(timeout=3)
+
+
+def test_health_deep_reports_truncated_database(tmp_path):
+    import sqlite3
+    from http.server import ThreadingHTTPServer
+
+    from books.db import BookRepository, Database
+    from books.runtime import Runtime, make_handler
+
+    db_path = tmp_path / "truncated.sqlite3"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE books (id TEXT PRIMARY KEY, title TEXT)")
+    conn.commit()
+    conn.close()
+
+    db = Database(db_path)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(Runtime(BookRepository(db), database=db)))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, payload = request(server, "GET", "/health?deep=1")
+        assert status == 503
+        assert payload["status"] == "degraded"
+        assert "reading_sessions" in payload["missing"]
+        status, payload = request(server, "GET", "/health")
+        assert status == 200 and payload == {"status": "ok"}
+    finally:
+        server.shutdown()
+        thread.join(timeout=3)

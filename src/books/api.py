@@ -137,7 +137,7 @@ class BooksAPI:
                 },
             },
             "paths": {
-                "/health": {"get": {"responses": {"200": {"description": "Healthy"}}}},
+                "/health": {"get": {"parameters": [{"name": "deep", "in": "query", "schema": {"type": "string"}, "description": "Set to 1 for a readiness check validating the full database schema (503 with missing tables when degraded). Without it, a cheap liveness probe."}], "responses": {"200": {"description": "Healthy"}, "503": {"description": "Degraded (deep check only)"}}}},
                 "/openapi.json": {"get": {"responses": {"200": {"description": "OpenAPI document"}}}},
                 "/v1/books": {
                     "get": {

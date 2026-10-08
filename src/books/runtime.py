@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from .api import APIError, BooksAPI
 from .db import BookRepository, Database
+from .health import missing_tables
 from .mcp import build_server
 from .sync import Change, SyncRuntime
 
@@ -53,7 +54,21 @@ def make_handler(runtime: Runtime):
             return value[7:] if value.startswith("Bearer ") else None
         def do_GET(self):
             parsed=urlsplit(self.path)
-            if parsed.path=="/health": self._write(200,{"status":"ok"}); return
+            if parsed.path=="/health":
+                # Cheap liveness probe by default; `?deep=1` additionally
+                # validates the full schema (readiness) without making the
+                # base endpoint DB-heavy.
+                query={k:v[-1] for k,v in parse_qs(parsed.query).items()}
+                if query.get("deep") not in (None,"","0","false"):
+                    try:
+                        with runtime.api.repo.db.connect() as conn:
+                            absent=sorted(missing_tables(conn))
+                    except Exception:  # noqa: BLE001 - unreadable DB means not ready
+                        self._write(503,{"status":"degraded","error":"database is not readable"}); return
+                    if absent:
+                        self._write(503,{"status":"degraded","missing":absent}); return
+                    self._write(200,{"status":"ok","mode":"deep"}); return
+                self._write(200,{"status":"ok"}); return
             if parsed.path=="/openapi.json": self._write(200,runtime.api.openapi()); return
             query={k:v[-1] for k,v in parse_qs(parsed.query).items()}
             if parsed.path=="/v1/sync/changes":
