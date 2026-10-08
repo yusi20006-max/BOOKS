@@ -40,3 +40,15 @@ def test_restore_requires_explicit_overwrite_and_validates_file(tmp_path):
 
     with pytest.raises(ValueError):
         service.restore_bytes(b"not sqlite", overwrite=True)
+
+
+def test_restored_database_is_owner_only(tmp_path):
+    import os
+
+    source = tmp_path / "source.sqlite3"
+    Database(source).migrate()
+    payload = BackupService(source).create_backup_bytes()
+
+    target = tmp_path / "target.sqlite3"
+    BackupService(target).restore_bytes(payload, overwrite=True)
+    assert os.stat(target).st_mode & 0o777 == 0o600

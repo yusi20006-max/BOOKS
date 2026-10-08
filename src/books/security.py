@@ -4,7 +4,14 @@ import os
 import re
 from dataclasses import dataclass
 
-_SECRET_PATTERNS=(re.compile(r"(?i)(token|secret|password|api[_-]?key)(\s*[=:]\s*)[^\s,]+"),)
+_SECRET_PATTERNS=(
+    re.compile(r"(?i)(token|secret|password|api[_-]?key)(\s*[=:]\s*)[^\s,]+"),
+    # CLI handoff form: `--token <value>` / `--token=<value>` (space-separated
+    # values are NOT covered by the generic `=`/`:` pattern above).
+    re.compile(r"(?i)(--token)(=|\s+)([^\s,]+)"),
+    # HTTP Authorization header form: `Bearer <credential>`.
+    re.compile(r"(?i)(Bearer)(\s+)([^\s,]+)"),
+)
 def redact_secrets(text:str)->str:
  out=text
  for p in _SECRET_PATTERNS: out=p.sub(lambda m:m.group(1)+m.group(2)+"[REDACTED]",out)
