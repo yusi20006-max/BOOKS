@@ -130,6 +130,40 @@ def make_handler(runtime: Runtime):
     return Handler
 
 
+def _is_loopback_host(host: str) -> bool:
+    """True when the bind address only accepts local connections."""
+    normalized = str(host).strip().lower()
+    if normalized in {"localhost", "localhost.localdomain"}:
+        return True
+    if normalized.count(".") == 3 and normalized.startswith("127."):
+        return True
+    return normalized in {"::1", "[::1]"}
+
+
+def check_bind_auth(host, token, *, allow_unauthenticated: bool = False, warn=print) -> None:
+    """Refuse a non-loopback bind without a token unless explicitly opted out.
+
+    The REST/MCP/sync surface is an open read/write API when no bearer token is
+    configured, so binding it to a routable interface would expose the library
+    to anyone who can reach the port. ``BOOKS_ALLOW_UNAUTHENTICATED=1`` is the
+    documented, explicit opt-out and logs a warning when used.
+    """
+    if _is_loopback_host(host) or token:
+        return
+    if allow_unauthenticated:
+        warn(
+            f"BOOKS runtime: WARNING: binding {host} without an API token "
+            "(BOOKS_ALLOW_UNAUTHENTICATED=1); the REST/MCP/sync API is open to "
+            "anyone who can reach this port.",
+        )
+        return
+    raise RuntimeError(
+        f"refusing to bind non-loopback host {host!r} without an API token: "
+        "set BOOKS_API_TOKEN (or --token), or explicitly opt out with "
+        "BOOKS_ALLOW_UNAUTHENTICATED=1 (insecure), or bind 127.0.0.1"
+    )
+
+
 def create_server(host,port,db_path,*,token=None):
     database=Database(db_path); database.migrate()
     return ThreadingHTTPServer((host,port),make_handler(Runtime(BookRepository(database),token=token,database=database)))
@@ -138,7 +172,14 @@ def create_server(host,port,db_path,*,token=None):
 def main():
     parser=argparse.ArgumentParser(description="BOOKS HTTP and MCP runtime")
     parser.add_argument("--host",default=os.getenv("BOOKS_HOST","127.0.0.1")); parser.add_argument("--port",type=int,default=int(os.getenv("BOOKS_PORT","8080"))); parser.add_argument("--db",default=os.getenv("BOOKS_DB_PATH","books.sqlite3")); parser.add_argument("--token",default=os.getenv("BOOKS_API_TOKEN"))
-    args=parser.parse_args(); server=create_server(args.host,args.port,args.db,token=args.token)
+    args=parser.parse_args()
+    allow_unauthenticated=os.getenv("BOOKS_ALLOW_UNAUTHENTICATED","").strip().lower() in {"1","true","yes","on"}
+    try:
+        check_bind_auth(args.host,args.token,allow_unauthenticated=allow_unauthenticated)
+    except RuntimeError as exc:
+        print(f"BOOKS runtime: error: {exc}",flush=True)
+        return 2
+    server=create_server(args.host,args.port,args.db,token=args.token)
     print(f"BOOKS runtime listening on http://{args.host}:{args.port}",flush=True)
     try: server.serve_forever()
     except KeyboardInterrupt: return 0
