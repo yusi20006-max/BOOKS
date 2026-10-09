@@ -6,6 +6,8 @@ Persian-first, offline-first personal library.
 
 Run `python -m books.runtime --host 127.0.0.1 --port 8080 --db books.sqlite3`. Configure `BOOKS_HOST`, `BOOKS_PORT`, `BOOKS_DB_PATH`, and optional `BOOKS_API_TOKEN`. REST is exposed under `/v1`, OpenAPI at `/openapi.json`, and MCP JSON-RPC 2.0 at `POST /mcp`. The Streamlit UI remains the user-facing application.
 
+The runtime binds `127.0.0.1` by default and is loopback-only unless a token is configured. Binding a non-loopback `BOOKS_HOST` without `BOOKS_API_TOKEN` is refused with a non-zero exit and an actionable error. To intentionally expose an unauthenticated API on a routable interface, set the explicit opt-out `BOOKS_ALLOW_UNAUTHENTICATED=1`; the runtime then logs a startup warning.
+
 `GET /health` is a cheap liveness probe that never touches the database. `GET /health?deep=1` is the documented readiness check: it validates the full database schema (derived from the migration sources) and returns `503` with the missing tables when the database is truncated or unreadable. The `python -m books.health` CLI and backup restore apply the same full validation and reject incomplete databases.
 
 ## UI (Streamlit)
