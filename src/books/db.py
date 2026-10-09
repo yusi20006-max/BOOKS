@@ -319,14 +319,29 @@ class BookRepository:
             return result.rowcount == 1
 
     def start_reading(self, book_id: str) -> str:
+        """Record the reading start timestamp, once.
+
+        Mirrors ``finish_reading``'s precondition: starting an already-started
+        book must not silently move the recorded start date. The Persian
+        ValueError message is user-facing — the «مطالعه» page surfaces
+        ``str(exc)`` directly through its existing error handler.
+        """
         timestamp = datetime.now(timezone.utc).isoformat()
         with transaction(self.db) as conn:
-            result = conn.execute(
+            row = conn.execute(
+                "SELECT reading_started_at FROM books WHERE id = ?",
+                (book_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError("book not found")
+            if row["reading_started_at"]:
+                raise ValueError(
+                    "مطالعه این کتاب قبلاً شروع شده است؛ تاریخ شروع قبلی حفظ می‌شود."
+                )
+            conn.execute(
                 "UPDATE books SET reading_started_at = ?, updated_at = ? WHERE id = ?",
                 (timestamp, timestamp, book_id),
             )
-            if result.rowcount != 1:
-                raise ValueError("book not found")
         return timestamp
 
     def finish_reading(self, book_id: str) -> str:

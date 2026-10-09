@@ -31,3 +31,28 @@ def test_reading_cannot_finish_before_start(tmp_path):
 
     with pytest.raises(ValueError, match="started"):
         repository.finish_reading(book_id)
+
+
+def test_start_reading_twice_keeps_first_timestamp(tmp_path):
+    db = Database(tmp_path / "books.sqlite3")
+    db.migrate()
+    repository = BookRepository(db)
+    book_id = repository.create_book(Book(title="کتاب"))
+
+    first = repository.start_reading(book_id)
+    stored = repository.get(book_id)["reading_started_at"]
+    assert stored == first
+
+    with pytest.raises(ValueError) as excinfo:
+        repository.start_reading(book_id)
+    assert "قبلاً شروع شده" in str(excinfo.value)
+    assert repository.get(book_id)["reading_started_at"] == stored
+    assert repository.finish_reading(book_id)  # guard does not break finish
+
+
+def test_start_reading_unknown_book_still_raises(tmp_path):
+    db = Database(tmp_path / "books.sqlite3")
+    db.migrate()
+    repository = BookRepository(db)
+    with pytest.raises(ValueError, match="book not found"):
+        repository.start_reading("missing")
