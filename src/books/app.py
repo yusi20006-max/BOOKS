@@ -112,7 +112,7 @@ def render_candidate(candidate: MergedDiscoveryItem, index: int) -> None:
     left, right = st.columns([1, 3], gap="medium")
     with left:
         if book.cover_url:
-            st.image(book.cover_url, use_container_width=True)
+            st.image(book.cover_url, width="stretch")
         else:
             st.caption("جلد موجود نیست")
     with right:
@@ -885,7 +885,7 @@ def render_library() -> None:
                 cols = st.columns([1, 5])
                 with cols[0]:
                     if row["cover_url"]:
-                        st.image(row["cover_url"], use_container_width=True)
+                        st.image(row["cover_url"], width="stretch")
                 with cols[1]:
                     st.subheader(row["title"])
                     summary = library_row_summary(row)
@@ -901,7 +901,7 @@ def render_library() -> None:
         for index, row in enumerate(rows):
             with columns[index % 3], st.container(border=True):
                     if row["cover_url"]:
-                        st.image(row["cover_url"], use_container_width=True)
+                        st.image(row["cover_url"], width="stretch")
                     st.subheader(row["title"])
                     summary = library_row_summary(row)
                     st.write(summary["authors"])
@@ -991,7 +991,7 @@ def render_annotations() -> None:
         else:
             st.success("حاشیه‌نویسی ذخیره شد.")
     annotations = repository.list_annotations(book_id)
-    st.dataframe([dict(row) for row in annotations], use_container_width=True)
+    st.dataframe([dict(row) for row in annotations], width="stretch")
 
 
 
@@ -1031,7 +1031,7 @@ def render_reading_journal() -> None:
     c1,c2,c3=st.columns(3); c1.metric("دقیقه",dashboard["minutes"]); c2.metric("صفحه",dashboard["pages"]); c3.metric("زنجیره روزانه",dashboard["streak"])
     if goal: st.json(dashboard["goal_progress"])
     st.write("نقاط عطف:", "، ".join(map(str,dashboard["milestones"])) or "هنوز ثبت نشده")
-    st.dataframe([{"تاریخ":k.isoformat(),"دقیقه":v} for k,v in dashboard["calendar"].items()], use_container_width=True)
+    st.dataframe([{"تاریخ":k.isoformat(),"دقیقه":v} for k,v in dashboard["calendar"].items()], width="stretch")
 
 
 
@@ -1043,7 +1043,7 @@ def render_knowledge_base() -> None:
     st.subheader("دانش شخصی، نقل‌قول و مفاهیم")
     query = st.text_input("جستجوی یکپارچه در یادداشت‌ها، نقل‌قول‌ها و مفاهیم", key="knowledge-search")
     rows = store.search(query) if query else []
-    if rows: st.dataframe([{"نوع":type(x).__name__,"متن":getattr(x,"text",getattr(x,"label","")),"صفحه":getattr(x,"page",None)} for x in rows],use_container_width=True)
+    if rows: st.dataframe([{"نوع":type(x).__name__,"متن":getattr(x,"text",getattr(x,"label","")),"صفحه":getattr(x,"page",None)} for x in rows],width="stretch")
     with st.form("knowledge-node"):
         label=st.text_input("مفهوم"); kind=st.text_input("نوع",value="concept"); save=st.form_submit_button("ثبت مفهوم")
         if save:
@@ -1093,7 +1093,7 @@ def render_reading_sessions() -> None:
         repository.add_reading_session(str(uuid4()), book_id, started_at.isoformat(), int(minutes), int(pages), note or None)
         st.success("جلسه مطالعه در SQLite ثبت شد.")
     sessions = repository.list_reading_sessions(book_id)
-    st.dataframe([dict(row) for row in sessions], use_container_width=True)
+    st.dataframe([dict(row) for row in sessions], width="stretch")
 
 def render_audiobooks() -> None:
     settings = load_settings()
@@ -1213,7 +1213,7 @@ def render_loans() -> None:
                 st.error("این شناسه نسخه قبلاً ثبت شده است؛ شناسه دیگری وارد کنید.")
             else:
                 st.success("نسخه و امانت در SQLite ثبت شد.")
-    st.dataframe([dict(row) for row in repository.list_loans()], use_container_width=True)
+    st.dataframe([dict(row) for row in repository.list_loans()], width="stretch")
 
 
 def render_ocr() -> None:
