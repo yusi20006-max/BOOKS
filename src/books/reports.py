@@ -27,7 +27,7 @@ def report_csv(rows:Iterable[dict])->str:
 def report_excel(rows:Iterable[dict])->bytes:
  try:
   from openpyxl import Workbook
- except ImportError as exc: raise RuntimeError("openpyxl is required for Excel reports") from exc
+ except ImportError as exc: raise RuntimeError("openpyxl is required for Excel reports; install BOOKS with the [excel] extra: pip install books[excel]") from exc
  rows=list(rows); wb=Workbook(); ws=wb.active; fields=sorted({k for row in rows for k in row}); ws.append(fields)
  for row in rows: ws.append([row.get(k) for k in fields])
  out=io.BytesIO(); wb.save(out); return out.getvalue()
@@ -35,7 +35,7 @@ def report_excel(rows:Iterable[dict])->bytes:
 def report_pdf(rows:Iterable[dict])->bytes:
  try:
   from reportlab.pdfgen.canvas import Canvas
- except ImportError as exc: raise RuntimeError("reportlab is required for PDF reports") from exc
+ except ImportError as exc: raise RuntimeError("reportlab is required for PDF reports; install BOOKS with the [pdf] extra: pip install books[pdf]") from exc
  out=io.BytesIO(); c=Canvas(out); y=800
  for row in rows:
   c.drawString(40,y,str(row)[:110]); y-=16
