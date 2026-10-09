@@ -213,3 +213,41 @@ def test_health_deep_reports_truncated_database(tmp_path):
     finally:
         server.shutdown()
         thread.join(timeout=3)
+
+
+def test_mcp_search_notes_returns_note_fields_over_http(tmp_path):
+    from books.db import BookRepository, Database
+    from books.models import Book
+
+    db = Database(str(tmp_path / "books.sqlite3"))
+    db.migrate()
+    repo = BookRepository(db)
+    book_id = repo.create_book(Book(title="کتاب آزمون", authors=("نویسنده",)))
+    repo.add_note("note-http", book_id, "یادداشت آزمون از طریق HTTP", page=7)
+
+    server, thread = start_server(tmp_path)
+    try:
+        status, payload = request(
+            server, "POST", "/mcp",
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+             "params": {"name": "search_notes", "arguments": {"query": "آزمون"}}},
+        )
+        assert status == 200
+        rows = payload["result"]
+        assert rows and all("title" not in row for row in rows)
+        note = next(row for row in rows if row["kind"] == "note")
+        assert note["id"] == "note-http"
+        assert note["page"] == 7
+        assert note["book_id"] == book_id
+
+        # Unknown argument shape maps to JSON-RPC invalid params, not a crash.
+        status, payload = request(
+            server, "POST", "/mcp",
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+             "params": {"name": "search_notes", "arguments": {"unexpected": "x"}}},
+        )
+        assert status == 200
+        assert payload["error"]["code"] == -32602
+    finally:
+        server.shutdown()
+        thread.join(timeout=3)
