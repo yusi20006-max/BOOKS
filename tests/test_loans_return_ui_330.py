@@ -61,7 +61,13 @@ def test_return_selectbox_offers_only_active_loans(app_session):
     session.open("قرض‌ها")
     selectboxes = {box.label: box for box in session.at.selectbox}
     assert "امانت برای بازگشت" in selectboxes
-    assert list(selectboxes["امانت برای بازگشت"].options) == ["loan-1"]
+    # AppTest exposes the formatted labels, so the book/copy/borrower
+    # context of the loan is asserted directly (acceptance criterion 5).
+    options = list(selectboxes["امانت برای بازگشت"].options)
+    assert len(options) == 1
+    assert "شازده کوچولو" in options[0]
+    assert "نسخه copy-1" in options[0]
+    assert "امانت‌گیرنده borrower-1" in options[0]
 
     session.click("ثبت بازگشت نسخه")
     session.open("قرض‌ها")
