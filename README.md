@@ -8,6 +8,15 @@ Run `python -m books.runtime --host 127.0.0.1 --port 8080 --db books.sqlite3`. C
 
 `GET /health` is a cheap liveness probe that never touches the database. `GET /health?deep=1` is the documented readiness check: it validates the full database schema (derived from the migration sources) and returns `503` with the missing tables when the database is truncated or unreadable. The `python -m books.health` CLI and backup restore apply the same full validation and reject incomplete databases.
 
+## UI (Streamlit)
+
+The Streamlit UI is the user-facing application. Any of the following starts it (the server honours `BOOKS_PORT`, default `8501`):
+
+- Installed package: `books`
+- Module entry point: `python -m books.app`
+- Source checkout without installing (Termux/proot included): from the repository root, run `PYTHONPATH=src streamlit run src/books/app.py`
+- Docker: the image entrypoint starts the UI automatically, e.g. `docker run --rm -p 8501:8501 books` (it resolves the packaged module and exits non-zero with an actionable error if no app file can be resolved)
+
 ## Sync contract
 
 The runtime sync endpoint accepts book changes using `create`, `update`, `upsert`, and `delete` operations. `upsert` creates the book when `entity_id` does not exist and updates the existing book when it does. Change IDs remain idempotent: replaying an already-applied change returns `applied: false` and does not apply the change again.
