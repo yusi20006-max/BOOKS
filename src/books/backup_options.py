@@ -19,7 +19,7 @@ def encrypt_backup(data:bytes,password:str)->bytes:
     try:
         from cryptography.fernet import Fernet
     except ImportError as exc:
-        raise RuntimeError("cryptography is required") from exc
+        raise RuntimeError("cryptography is required for encrypted backups; install BOOKS with the [crypto] extra: pip install books[crypto]") from exc
     key=base64.urlsafe_b64encode(hashlib.sha256(password.encode()).digest())
     return b"BOOKSENC1"+Fernet(key).encrypt(data)
 
@@ -28,7 +28,7 @@ def decrypt_backup(data:bytes,password:str)->bytes:
     try:
         from cryptography.fernet import Fernet
     except ImportError as exc:
-        raise RuntimeError("cryptography is required") from exc
+        raise RuntimeError("cryptography is required for encrypted backups; install BOOKS with the [crypto] extra: pip install books[crypto]") from exc
     key=base64.urlsafe_b64encode(hashlib.sha256(password.encode()).digest())
     return Fernet(key).decrypt(data[9:])
 
