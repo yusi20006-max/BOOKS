@@ -28,9 +28,11 @@ def test_start_button_disappears_after_first_start(app_session):
     assert started_at
     # The repeat press is impossible through the UI: the start button is gone
     # and the recorded date is shown instead.
-    assert not any(
-        "شروع مطالعه" in (button.label or "") for button in session.at.button
-    )
+    buttons = [
+        (getattr(button, "key", None), button.label) for button in session.at.button
+    ]
+    stray = [entry for entry in buttons if "شروع مطالعه" in (entry[1] or "")]
+    assert not stray, f"all buttons after start: {buttons!r}"
     assert session.repository.get(book_id)["reading_started_at"] == started_at
 
 
