@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import sys
+from datetime import date
 from pathlib import Path
 
 import streamlit as st
@@ -14,6 +15,7 @@ from books.config import load_settings
 from books.db import BookRepository, Database
 from books.discovery import DiscoveryService, MergedDiscoveryItem
 from books.enrichment import MetadataEnricher
+from books.lending import Loan, due_state
 from books.models import Book
 from books.providers.google_books import GoogleBooksProvider
 from books.providers.open_library import OpenLibraryProvider
@@ -1177,6 +1179,27 @@ def render_audiobooks() -> None:
             else:
                 st.success("فایل صوتی ثبت شد.")
 
+_LOAN_STATE_LABELS = {
+    "returned": "برگشت داده شده",
+    "no_due_date": "بدون سررسید",
+    "overdue": "در موعد گذشته",
+    "due_soon": "نزدیک سررسید",
+    "active": "فعال",
+}
+
+
+def _loan_due_state(row, today: date) -> str:
+    """Compute the lending due state for a loans row via ``books.lending``."""
+    loan = Loan(
+        copy_id=row["copy_id"],
+        borrower_id=row["borrower_id"],
+        loaned_on=date.fromisoformat(row["loaned_on"]),
+        due_on=date.fromisoformat(row["due_on"]) if row["due_on"] else None,
+        returned_on=date.fromisoformat(row["returned_on"]) if row["returned_on"] else None,
+    )
+    return due_state(loan, today)
+
+
 def render_loans() -> None:
     settings = load_settings()
     repository = BookRepository(Database(settings.db_path))
@@ -1211,9 +1234,44 @@ def render_loans() -> None:
                 )
             except sqlite3.IntegrityError:
                 st.error("این شناسه نسخه قبلاً ثبت شده است؛ شناسه دیگری وارد کنید.")
+            except ValueError as exc:
+                st.error(str(exc))
             else:
                 st.success("نسخه و امانت در SQLite ثبت شد.")
-    st.dataframe([dict(row) for row in repository.list_loans()], width="stretch")
+
+    today = date.today()
+    detailed = [dict(row) for row in repository.list_loans_detailed()]
+    states = {row["id"]: _loan_due_state(row, today) for row in detailed}
+    active = [row for row in detailed if not row["returned_on"]]
+    overdue = sum(1 for row in active if states[row["id"]] == "overdue")
+    due_soon = sum(1 for row in active if states[row["id"]] == "due_soon")
+    if active:
+        st.caption(
+            f"امانت‌های فعال: {len(active)} | در موعد گذشته: {overdue} | نزدیک سررسید: {due_soon}"
+        )
+        active_ids = [row["id"] for row in active]
+        active_labels = {
+            row["id"]: f"{row['book_title'] or '—'} — نسخه {row['copy_id']} — امانت‌گیرنده {row['borrower_id']}"
+            for row in active
+        }
+        selected_loan = st.selectbox(
+            "امانت برای بازگشت",
+            active_ids,
+            format_func=lambda value: active_labels[value],
+            key="return-loan-select",
+        )
+        if st.button("ثبت بازگشت نسخه", type="primary", key="return-loan"):
+            try:
+                repository.return_loan(selected_loan)
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.success("بازگشت نسخه ثبت شد؛ وضعیت نسخه به «آزاد» برگشت.")
+    table = [
+        row | {"due_state": _LOAN_STATE_LABELS.get(states[row["id"]], states[row["id"]])}
+        for row in detailed
+    ]
+    st.dataframe(table, width="stretch")
 
 
 def render_ocr() -> None:
