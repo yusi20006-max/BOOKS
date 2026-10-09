@@ -48,6 +48,20 @@ else:
 with urllib.request.urlopen(base + "/openapi.json", timeout=3) as response:
     payload = json.load(response)
 assert payload["openapi"].startswith("3.")
+# The document must list every implemented route (drift protection: a new
+# runtime route without a matching OpenAPI entry fails the gate).
+implemented_routes = {
+    "/health",
+    "/openapi.json",
+    "/v1/books",
+    "/v1/books/{id}",
+    "/v1/search",
+    "/v1/sync/changes",
+    "/mcp",
+}
+assert set(payload["paths"]) == implemented_routes, (
+    f"OpenAPI paths drift: {sorted(payload['paths'])}"
+)
 
 request = urllib.request.Request(
     base + "/mcp",

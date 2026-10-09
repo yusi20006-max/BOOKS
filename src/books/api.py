@@ -133,7 +133,20 @@ class BooksAPI:
                         "type": "object",
                         "required": ["error"],
                         "properties": {"error": {"type": "string"}},
-                    }
+                    },
+                    "Change": {
+                        "type": "object",
+                        "required": ["id", "entity", "entity_id", "operation", "version", "payload", "changed_at"],
+                        "properties": {
+                            "id": {"type": "string"},
+                            "entity": {"type": "string", "enum": ["book"]},
+                            "entity_id": {"type": "string"},
+                            "operation": {"type": "string", "enum": ["create", "update", "upsert", "delete"]},
+                            "version": {"type": "integer", "minimum": 1},
+                            "payload": {"type": "object"},
+                            "changed_at": {"type": "string"},
+                        },
+                    },
                 },
             },
             "paths": {
@@ -165,6 +178,120 @@ class BooksAPI:
                         "security": [{"bearerAuth": []}],
                         "parameters": [{"name": "q", "in": "query", "schema": {"type": "string"}}],
                         "responses": {"200": {"description": "Search results"}, "401": {"description": "Unauthorized"}, "429": {"description": "Rate limited"}},
+                    }
+                },
+                "/v1/sync/changes": {
+                    "get": {
+                        "security": [{"bearerAuth": []}],
+                        "parameters": [
+                            {"name": "since", "in": "query", "schema": {"type": "integer", "minimum": 0}, "description": "Return changes with a version greater than this value (default 0)."},
+                        ],
+                        "responses": {
+                            "200": {
+                                "description": "Changes since the given version",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "type": "object",
+                                            "required": ["changes"],
+                                            "properties": {"changes": {"type": "array", "items": {"$ref": "#/components/schemas/Change"}}},
+                                        }
+                                    }
+                                },
+                            },
+                            "400": {"description": "since must be a non-negative integer"},
+                            "401": {"description": "Unauthorized"},
+                            "429": {"description": "Rate limited"},
+                        },
+                    },
+                    "post": {
+                        "security": [{"bearerAuth": []}],
+                        "requestBody": {
+                            "required": True,
+                            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Change"}}},
+                        },
+                        "responses": {
+                            "200": {
+                                "description": "Change accepted",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "type": "object",
+                                            "required": ["accepted", "id", "applied"],
+                                            "properties": {
+                                                "accepted": {"type": "boolean"},
+                                                "id": {"type": "string"},
+                                                "applied": {"type": "boolean", "description": "False when an equal/newer version was already stored (idempotent re-import)."},
+                                            },
+                                        }
+                                    }
+                                },
+                            },
+                            "400": {"description": "Invalid change (missing/invalid fields, unsupported operation)"},
+                            "401": {"description": "Unauthorized"},
+                            "413": {"description": "Request body too large"},
+                            "429": {"description": "Rate limited"},
+                        },
+                    },
+                },
+                "/mcp": {
+                    "post": {
+                        "security": [{"bearerAuth": []}],
+                        "requestBody": {
+                            "required": True,
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "required": ["jsonrpc", "method"],
+                                        "properties": {
+                                            "jsonrpc": {"type": "string", "enum": ["2.0"]},
+                                            "id": {"description": "Correlation id; echoed in the response."},
+                                            "method": {"type": "string", "example": "tools/call"},
+                                            "params": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "name": {"type": "string", "example": "search_books"},
+                                                    "arguments": {"type": "object"},
+                                                },
+                                            },
+                                        },
+                                    },
+                                    "example": {
+                                        "jsonrpc": "2.0",
+                                        "id": 1,
+                                        "method": "tools/call",
+                                        "params": {"name": "search_books", "arguments": {"query": "کتاب", "limit": 5}},
+                                    },
+                                }
+                            },
+                        },
+                        "responses": {
+                            "200": {
+                                "description": "JSON-RPC envelope: result on success, error (e.g. -32601 unknown tool, -32602 invalid arguments) on failure.",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "type": "object",
+                                            "required": ["jsonrpc"],
+                                            "properties": {
+                                                "jsonrpc": {"type": "string", "enum": ["2.0"]},
+                                                "id": {"description": "Echo of the request id, when provided."},
+                                                "result": {"description": "Tool output; shape depends on the requested tool."},
+                                                "error": {
+                                                    "type": "object",
+                                                    "required": ["code", "message"],
+                                                    "properties": {"code": {"type": "integer"}, "message": {"type": "string"}},
+                                                },
+                                            },
+                                        }
+                                    }
+                                },
+                            },
+                            "400": {"description": "Malformed JSON body"},
+                            "401": {"description": "Unauthorized"},
+                            "429": {"description": "Rate limited"},
+                        },
                     }
                 },
             },
