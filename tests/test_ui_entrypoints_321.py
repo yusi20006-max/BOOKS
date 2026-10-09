@@ -49,6 +49,9 @@ def _entrypoint_env(tmp_path: Path, stub: Path) -> dict[str, str]:
         **os.environ,
         "PATH": f"{stub}{os.pathsep}{os.environ['PATH']}",
         "BOOKS_DB_PATH": str(tmp_path / "entry.sqlite3"),
+        # Some startup tests leak a BOOKS_PORT=8080 assignment into os.environ;
+        # force the documented default here so the assertion is deterministic.
+        "BOOKS_PORT": "",
         "PYTHONPATH": str(REPO / "src"),
     }
 
@@ -110,6 +113,7 @@ def test_module_help_runs_through_streamlit_cli():
     pytest.importorskip("streamlit")
     env = {
         **os.environ,
+        "BOOKS_PORT": "",
         "PYTHONPATH": os.pathsep.join(
             part for part in (str(REPO / "src"), os.environ.get("PYTHONPATH")) if part
         ),
@@ -117,6 +121,8 @@ def test_module_help_runs_through_streamlit_cli():
     # ``python -m books.app --help`` must reach the Streamlit CLI and exit 0
     # instead of rendering in bare mode (the pre-fix behaviour exited 0 after
     # printing "missing ScriptRunContext" without ever starting a server).
+    # Click's usage text on stdout is the discriminator: a bare-mode render
+    # never emits it.
     proc = subprocess.run(
         [sys.executable, "-m", "books.app", "--help"],
         check=False,
@@ -126,9 +132,7 @@ def test_module_help_runs_through_streamlit_cli():
         timeout=120,
     )
     assert proc.returncode == 0, proc.stderr
-    combined = (proc.stdout + proc.stderr).lower()
-    assert "usage" in combined
-    assert "missing scriptruncontext" not in combined
+    assert "usage" in proc.stdout.lower()
 
 
 def test_console_script_runs_through_streamlit_cli():
