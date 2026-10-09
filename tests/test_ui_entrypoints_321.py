@@ -23,8 +23,8 @@ APP_SCRIPT = "from books.app import main\n\nmain()\n"
 def test_app_py_has_no_relative_imports():
     """streamlit run executes app.py standalone, so relative imports abort it."""
     source = (REPO / "src" / "books" / "app.py").read_text(encoding="utf-8")
-    assert not re.search(r"^\s*from\s+\.", source, re.M)
-    assert not re.search(r"^\s*import\s+\.", source, re.M)
+    assert not re.search(r"^\s*from\s+\.", source, re.MULTILINE)
+    assert not re.search(r"^\s*import\s+\.", source, re.MULTILINE)
 
 
 def test_console_script_targets_app_main():
@@ -56,6 +56,7 @@ def _entrypoint_env(tmp_path: Path, stub: Path) -> dict[str, str]:
 def _run_entrypoint(cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["sh", str(REPO / "scripts" / "docker-entrypoint.sh")],
+        check=False,
         cwd=cwd,
         env=env,
         capture_output=True,
@@ -118,6 +119,7 @@ def test_module_help_runs_through_streamlit_cli():
     # printing "missing ScriptRunContext" without ever starting a server).
     proc = subprocess.run(
         [sys.executable, "-m", "books.app", "--help"],
+        check=False,
         env=env,
         capture_output=True,
         text=True,
@@ -134,14 +136,14 @@ def test_console_script_runs_through_streamlit_cli():
     script = shutil.which("books")
     if script is None:
         pytest.skip("books console script not installed in this environment")
-    proc = subprocess.run([script, "--help"], capture_output=True, text=True, timeout=120)
+    proc = subprocess.run([script, "--help"], check=False, capture_output=True, text=True, timeout=120)
     assert proc.returncode == 0, proc.stderr
     assert "usage" in (proc.stdout + proc.stderr).lower()
 
 
 def test_main_dispatches_to_launcher_outside_streamlit():
     pytest.importorskip("streamlit")
-    import books.app as app
+    from books import app
 
     launched: list[list[str]] = []
     with pytest.MonkeyPatch.context() as patch:
@@ -153,7 +155,7 @@ def test_main_dispatches_to_launcher_outside_streamlit():
 
 def test_launch_command_honours_book_port(monkeypatch):
     pytest.importorskip("streamlit")
-    import books.app as app
+    from books import app
 
     monkeypatch.delenv("BOOKS_PORT", raising=False)
     command = app._launch_command()
