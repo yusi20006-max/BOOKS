@@ -1,8 +1,9 @@
 """Regression tests for Audit/P2 #352 optional packaging extras."""
 
-import tomllib
 from pathlib import Path
 from unittest.mock import patch
+
+import tomllib
 
 
 def test_extras_declared_in_metadata():
