@@ -814,7 +814,14 @@ class BookRepository:
         with transaction(self.db) as conn:
             if conn.execute("SELECT 1 FROM physical_copies WHERE id = ?", (copy_id,)).fetchone() is None:
                 raise ValueError("copy not found")
+            active = conn.execute(
+                "SELECT 1 FROM loans WHERE copy_id = ? AND returned_on IS NULL",
+                (copy_id,),
+            ).fetchone()
+            if active is not None:
+                raise ValueError("این نسخه هم‌اکنون امانت است؛ ابتدا بازگشت آن را ثبت کنید.")
             conn.execute("INSERT INTO loans(id,copy_id,borrower_id,loaned_on,due_on,notes) VALUES(?,?,?,?,?,?)", (loan_id, copy_id, borrower_id, loaned_on, due_on, notes))
+            conn.execute("UPDATE physical_copies SET status = 'on_loan' WHERE id = ?", (copy_id,))
 
     def return_loan(self, loan_id: str, returned_on: str | None = None) -> bool:
         """Mark a loan returned, persisting ``returned_on`` and closing the lifecycle."""
@@ -828,7 +835,7 @@ class BookRepository:
             if row is None:
                 raise ValueError("loan not found")
             if row["returned_on"]:
-                raise ValueError("loan already returned")
+                raise ValueError("این امانت قبلاً بازگردانده شده است؛ تغییری انجام نشد.")
             try:
                 loaned = datetime.fromisoformat(row["loaned_on"]).date()
             except ValueError as exc:
@@ -836,11 +843,42 @@ class BookRepository:
             if returned < loaned:
                 raise ValueError("returned_on must not precede loaned_on")
             result = conn.execute("UPDATE loans SET returned_on = ? WHERE id = ?", (stamp, loan_id))
+            conn.execute(
+                "UPDATE physical_copies SET status = 'available' WHERE id = (SELECT copy_id FROM loans WHERE id = ?)",
+                (loan_id,),
+            )
             return result.rowcount == 1
 
     def list_loans(self, limit: int = 100) -> list[sqlite3.Row]:
         with self.db.connect() as conn:
             return conn.execute("SELECT * FROM loans ORDER BY loaned_on DESC LIMIT ?", (limit,)).fetchall()
+
+    def list_active_loans(self) -> list[sqlite3.Row]:
+        """Loans that have not been returned, with book and copy context."""
+        with self.db.connect() as conn:
+            return conn.execute(
+                """SELECT l.*, c.book_id AS book_id, c.status AS copy_status,
+                          b.title AS book_title
+                   FROM loans l
+                   LEFT JOIN physical_copies c ON c.id = l.copy_id
+                   LEFT JOIN books b ON b.id = c.book_id
+                   WHERE l.returned_on IS NULL
+                   ORDER BY l.due_on IS NULL, l.due_on, l.loaned_on DESC"""
+            ).fetchall()
+
+    def list_loans_detailed(self, limit: int = 100) -> list[sqlite3.Row]:
+        """All loans with book and copy context; active loans come first."""
+        with self.db.connect() as conn:
+            return conn.execute(
+                """SELECT l.*, c.book_id AS book_id, c.status AS copy_status,
+                          b.title AS book_title
+                   FROM loans l
+                   LEFT JOIN physical_copies c ON c.id = l.copy_id
+                   LEFT JOIN books b ON b.id = c.book_id
+                   ORDER BY l.returned_on IS NOT NULL, l.loaned_on DESC
+                   LIMIT ?""",
+                (limit,),
+            ).fetchall()
 
 
     def add_audiobook(
