@@ -32,7 +32,8 @@ def test_rest_and_mcp_runtime(tmp_path):
         status, spec = request(server, "GET", "/openapi.json")
         assert status == 200
         assert spec["openapi"] == "3.0.3"
-        assert "/mcp" not in spec["paths"]  # MCP uses JSON-RPC, not REST OpenAPI paths.
+        assert "/mcp" in spec["paths"]  # JSON-RPC endpoint is part of the served contract (#334).
+        assert "/v1/sync/changes" in spec["paths"]
         status, books = request(server, "GET", "/v1/books")
         assert status == 200 and books == []
         status, result = request(

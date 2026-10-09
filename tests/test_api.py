@@ -31,3 +31,35 @@ def test_book_serialization_tolerates_malformed_json():
   from books.api import serialize_book_row
   row=serialize_book_row({"id":"x","authors_json":"not-json","translators_json":None,"genres_json":"[1,","subjects_json":"[]","source_ids_json":"oops"})
   assert row["authors"]==[] and row["translators"]==[] and row["genres"]==[] and row["source_ids"]=={}
+
+
+def test_openapi_documents_every_implemented_route():
+    doc = BooksAPI(R(), token="x").openapi()
+    # Single source of truth: every route the runtime actually serves.
+    implemented_routes = {
+        "/health",
+        "/openapi.json",
+        "/v1/books",
+        "/v1/books/{id}",
+        "/v1/search",
+        "/v1/sync/changes",
+        "/mcp",
+    }
+    assert set(doc["paths"]) == implemented_routes
+    assert set(doc["paths"]["/v1/sync/changes"]) == {"get", "post"}
+    assert set(doc["paths"]["/mcp"]) == {"post"}
+    change_schema = doc["components"]["schemas"]["Change"]
+    assert set(change_schema["required"]) == {
+        "id",
+        "entity",
+        "entity_id",
+        "operation",
+        "version",
+        "payload",
+        "changed_at",
+    }
+    assert doc["components"]["schemas"]["Error"] == {
+        "type": "object",
+        "required": ["error"],
+        "properties": {"error": {"type": "string"}},
+    }
