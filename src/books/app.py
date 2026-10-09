@@ -1,22 +1,24 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+import sys
 from pathlib import Path
 
 import streamlit as st
 from PIL import Image
 
-from .backup import BackupService
-from .config import load_settings
-from .db import BookRepository, Database
-from .discovery import DiscoveryService, MergedDiscoveryItem
-from .enrichment import MetadataEnricher
-from .models import Book
-from .providers.google_books import GoogleBooksProvider
-from .providers.open_library import OpenLibraryProvider
-from .scanner import BarcodeScanner
-from .transfer import BookTransferService
+from books.backup import BackupService
+from books.config import load_settings
+from books.db import BookRepository, Database
+from books.discovery import DiscoveryService, MergedDiscoveryItem
+from books.enrichment import MetadataEnricher
+from books.models import Book
+from books.providers.google_books import GoogleBooksProvider
+from books.providers.open_library import OpenLibraryProvider
+from books.scanner import BarcodeScanner
+from books.transfer import BookTransferService
 
 PAGES = {
     "کتابخانه": "نمایش و مدیریت کتاب‌های ذخیره‌شده",
@@ -157,7 +159,7 @@ def build_edited_book(
     notes: str | None = None,
     source_ids: dict[str, str],
 ):
-    from .models import Book
+    from books.models import Book
 
     return Book(
         title=title,
@@ -1010,8 +1012,8 @@ def render_catalog_editions() -> None:
 
 def render_reading_journal() -> None:
     settings = load_settings()
-    from .reading_journal import ReadingGoal
-    from .reading_journal_store import ReadingJournalStore
+    from books.reading_journal import ReadingGoal
+    from books.reading_journal_store import ReadingJournalStore
     store = ReadingJournalStore(Database(settings.db_path))
     store.db.migrate()
     st.subheader("اهداف و تقویم مطالعه")
@@ -1035,8 +1037,8 @@ def render_reading_journal() -> None:
 
 def render_knowledge_base() -> None:
     settings = load_settings()
-    from .knowledge import KnowledgeNode
-    from .knowledge_store import KnowledgeStore
+    from books.knowledge import KnowledgeNode
+    from books.knowledge_store import KnowledgeStore
     store = KnowledgeStore(Database(settings.db_path)); store.db.migrate()
     st.subheader("دانش شخصی، نقل‌قول و مفاهیم")
     query = st.text_input("جستجوی یکپارچه در یادداشت‌ها، نقل‌قول‌ها و مفاهیم", key="knowledge-search")
@@ -1052,7 +1054,7 @@ def render_knowledge_base() -> None:
 
 
 def render_ai_assistant() -> None:
-    from .ai_service import BookAIService, local_first_provider
+    from books.ai_service import BookAIService, local_first_provider
     settings = load_settings(); repository = BookRepository(Database(settings.db_path)); repository.db.migrate()
     rows=repository.list(limit=1000)
     st.subheader("دستیار هوشمند کتاب")
@@ -1223,7 +1225,7 @@ def render_ocr() -> None:
     if not text:
         st.info("متن OCR را وارد کنید تا پیش‌نمایش قابل اصلاح ساخته شود.")
         return
-    from .ocr import scan_to_book_draft
+    from books.ocr import scan_to_book_draft
     draft = scan_to_book_draft(text)
     title = st.text_input("عنوان اصلاح‌شده", value=str(draft["title"]))
     publisher = st.text_input("ناشر اصلاح‌شده", value=str(draft["publisher"]))
@@ -1262,7 +1264,7 @@ def render_reports() -> None:
     repository = BookRepository(Database(settings.db_path))
     repository.db.migrate()
     rows = [dict(row) for row in repository.list(limit=1000)]
-    from .reports import inventory_analytics, report_csv, report_json
+    from books.reports import inventory_analytics, report_csv, report_json
     metrics = inventory_analytics(rows)
     st.json(metrics)
     st.download_button("JSON گزارش", report_json(metrics), "books-report.json", "application/json")
@@ -1320,7 +1322,41 @@ def render_page(page: str) -> None:
         st.code(str(settings.db_path), language="text")
 
 
+def _inside_streamlit() -> bool:
+    """True while executing inside a Streamlit script run (rendering context)."""
+    from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+    return get_script_run_ctx() is not None
+
+
+def _launch_command(extra_args: list[str] | None = None) -> list[str]:
+    """Build the ``python -m streamlit run <this file>`` command for the UI server.
+
+    ``BOOKS_PORT`` selects the UI port (Streamlit's default is 8501).
+    """
+    command = [sys.executable, "-m", "streamlit", "run", str(Path(__file__).resolve())]
+    port = os.environ.get("BOOKS_PORT")
+    if port:
+        command += ["--server.port", str(port)]
+    command += list(extra_args or ())
+    return command
+
+
+def launch() -> None:
+    """Start the Streamlit UI server (``books`` console script / ``python -m books.app``).
+
+    Replaces the current process so the server command line stays recognisable
+    to ``books.startup.is_books_process`` (``streamlit`` + ``books`` path).
+    """
+    os.execv(sys.executable, _launch_command(sys.argv[1:]))
+
+
 def main() -> None:
+    if not _inside_streamlit():
+        # Invoked as an entry point (books / python -m books.app) instead of a
+        # Streamlit script run: start the server, which will render the app.
+        launch()
+        return
     configure_page()
     page = render_sidebar()
     render_page(page)
