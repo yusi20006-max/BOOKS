@@ -721,6 +721,30 @@ class BookRepository:
         with self.db.connect() as conn:
             return {"notes": conn.execute("SELECT * FROM notes WHERE book_id=? ORDER BY created_at DESC", (book_id,)).fetchall(), "quotes": conn.execute("SELECT * FROM quotes WHERE book_id=? ORDER BY created_at DESC", (book_id,)).fetchall()}
 
+    def search_notes(self, query: str, limit: int = 100) -> list[dict]:
+        """Search the personal notes and quotes tables (MCP ``search_notes``).
+
+        Returns note/quote records — ``id``, ``book_id``, ``text``, ``page``,
+        ``created_at`` (plus ``source`` for quotes) tagged with ``kind`` —
+        never book rows.
+        """
+        needle = normalize_text(query).casefold().strip()
+        if not needle or limit <= 0:
+            return []
+        with self.db.connect() as conn:
+            notes = conn.execute(
+                "SELECT * FROM notes WHERE lower(text) LIKE ? ORDER BY created_at DESC LIMIT ?",
+                (f"%{needle}%", limit),
+            ).fetchall()
+            quotes = conn.execute(
+                "SELECT * FROM quotes WHERE lower(text) LIKE ? ORDER BY created_at DESC LIMIT ?",
+                (f"%{needle}%", limit),
+            ).fetchall()
+        rows = [dict(row, kind="note") for row in notes]
+        rows += [dict(row, kind="quote") for row in quotes]
+        rows.sort(key=lambda row: row["created_at"], reverse=True)
+        return rows[:limit]
+
     def add_copy(self, copy_id: str, book_id: str, condition: str = "good", status: str = "available", internal_code: str | None = None) -> None:
         """Record a physical inventory row.
 

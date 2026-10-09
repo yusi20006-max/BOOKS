@@ -29,7 +29,7 @@ def build_server(repo:BookRepository)->MCPServer:
     server.register("search_books",lambda query,limit=100:[serialize_book_row(x) for x in repo.search(query,limit)])
     server.register("get_book",lambda book_id: (serialize_book_row(x) if (x:=repo.get(book_id)) else None))
     server.register("list_library",lambda limit=100:[serialize_book_row(x) for x in repo.list(limit)])
-    server.register("search_notes",lambda query: [serialize_book_row(x) for x in repo.search(query)])
+    server.register("search_notes",lambda query: repo.search_notes(query))
     server.register("get_statistics",repo.reading_statistics)
     server.register("delete_book",repo.delete,write=True)
     return server
