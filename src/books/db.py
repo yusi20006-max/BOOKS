@@ -668,7 +668,25 @@ class BookRepository:
 
 
     def add_reading_session(self, session_id: str, book_id: str, started_at: str, minutes: int, pages: int, note: str | None = None) -> None:
+        from .reading_journal import ReadingSession
+
+        if not isinstance(session_id, str) or not session_id.strip():
+            raise ValueError("session id is required")
+        if not isinstance(book_id, str) or not book_id.strip():
+            raise ValueError("book id is required")
+        if not isinstance(started_at, str) or not started_at.strip():
+            raise ValueError("session start is required")
+        try:
+            start = datetime.fromisoformat(started_at.strip()).date()
+        except ValueError as exc:
+            raise ValueError("session start must be an ISO date") from exc
+        try:
+            ReadingSession(session_id.strip(), book_id.strip(), start, minutes, pages, note)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(str(exc)) from exc
         with transaction(self.db) as conn:
+            if conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone() is None:
+                raise ValueError("book not found")
             conn.execute("INSERT INTO reading_sessions(id,book_id,started_at,minutes,pages,note) VALUES(?,?,?,?,?,?)", (session_id, book_id, started_at, minutes, pages, note))
 
     def list_reading_sessions(self, book_id: str, limit: int = 100) -> list[sqlite3.Row]:
@@ -676,11 +694,27 @@ class BookRepository:
             return conn.execute("SELECT * FROM reading_sessions WHERE book_id=? ORDER BY started_at DESC LIMIT ?", (book_id, limit)).fetchall()
 
     def add_note(self, note_id: str, book_id: str, text: str, page: int | None = None) -> None:
+        from .knowledge import Note
+
+        try:
+            Note(note_id, book_id, text, page)
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise ValueError(str(exc)) from exc
         with transaction(self.db) as conn:
+            if conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone() is None:
+                raise ValueError("book not found")
             conn.execute("INSERT INTO notes(id,book_id,text,page) VALUES(?,?,?,?)", (note_id, book_id, text, page))
 
     def add_quote(self, quote_id: str, book_id: str, text: str, page: int | None = None, source: str | None = None) -> None:
+        from .knowledge import Quote
+
+        try:
+            Quote(quote_id, book_id, text, page, source)
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise ValueError(str(exc)) from exc
         with transaction(self.db) as conn:
+            if conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone() is None:
+                raise ValueError("book not found")
             conn.execute("INSERT INTO quotes(id,book_id,text,page,source) VALUES(?,?,?,?,?)", (quote_id, book_id, text, page, source))
 
     def list_knowledge(self, book_id: str) -> dict[str, list[sqlite3.Row]]:
@@ -688,12 +722,82 @@ class BookRepository:
             return {"notes": conn.execute("SELECT * FROM notes WHERE book_id=? ORDER BY created_at DESC", (book_id,)).fetchall(), "quotes": conn.execute("SELECT * FROM quotes WHERE book_id=? ORDER BY created_at DESC", (book_id,)).fetchall()}
 
     def add_copy(self, copy_id: str, book_id: str, condition: str = "good", status: str = "available", internal_code: str | None = None) -> None:
+        """Record a physical inventory row.
+
+        Copy-model note (dual model, explicit mapping): the catalog keeps
+        ``copies(id, edition_id, format, owner_id)`` keyed by edition, while
+        lending inventory keeps ``physical_copies(id, book_id, condition,
+        status, internal_code)`` keyed by book. ``add_copy`` writes the
+        lending/inventory side; catalog ``copies`` rows are managed by the
+        catalog/edition code paths. The two tables are intentionally not
+        unified (unifying would require a migration remapping edition_id <->
+        book_id); treat ``physical_copies.book_id`` as the inventory owner
+        and ``copies.edition_id`` as the catalog owner.
+        """
+        from .physical import PhysicalCopy
+
+        if not isinstance(copy_id, str) or not copy_id.strip():
+            raise ValueError("copy id is required")
+        if not isinstance(book_id, str) or not book_id.strip():
+            raise ValueError("book id is required")
+        try:
+            PhysicalCopy(copy_id.strip(), book_id.strip(), condition, internal_code, status)
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise ValueError(str(exc)) from exc
         with transaction(self.db) as conn:
+            if conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone() is None:
+                raise ValueError("book not found")
             conn.execute("INSERT INTO physical_copies(id,book_id,condition,status,internal_code) VALUES(?,?,?,?,?)", (copy_id, book_id, condition, status, internal_code))
 
     def add_loan(self, loan_id: str, copy_id: str, borrower_id: str, loaned_on: str, due_on: str | None = None, notes: str | None = None) -> None:
+        if not isinstance(loan_id, str) or not loan_id.strip():
+            raise ValueError("loan id is required")
+        if not isinstance(copy_id, str) or not copy_id.strip():
+            raise ValueError("copy id is required")
+        if not isinstance(borrower_id, str) or not borrower_id.strip():
+            raise ValueError("borrower id is required")
+        if not isinstance(loaned_on, str) or not loaned_on.strip():
+            raise ValueError("loaned_on is required")
+        try:
+            loaned = datetime.fromisoformat(loaned_on.strip()).date()
+        except ValueError as exc:
+            raise ValueError("loaned_on must be an ISO date") from exc
+        due = None
+        if due_on is not None:
+            if not isinstance(due_on, str) or not due_on.strip():
+                raise ValueError("due_on must not be empty")
+            try:
+                due = datetime.fromisoformat(due_on.strip()).date()
+            except ValueError as exc:
+                raise ValueError("due_on must be an ISO date") from exc
+            if due < loaned:
+                raise ValueError("due_on must not precede loaned_on")
         with transaction(self.db) as conn:
+            if conn.execute("SELECT 1 FROM physical_copies WHERE id = ?", (copy_id,)).fetchone() is None:
+                raise ValueError("copy not found")
             conn.execute("INSERT INTO loans(id,copy_id,borrower_id,loaned_on,due_on,notes) VALUES(?,?,?,?,?,?)", (loan_id, copy_id, borrower_id, loaned_on, due_on, notes))
+
+    def return_loan(self, loan_id: str, returned_on: str | None = None) -> bool:
+        """Mark a loan returned, persisting ``returned_on`` and closing the lifecycle."""
+        stamp = (returned_on or datetime.now(timezone.utc).date().isoformat()).strip()
+        try:
+            returned = datetime.fromisoformat(stamp).date()
+        except ValueError as exc:
+            raise ValueError("returned_on must be an ISO date") from exc
+        with transaction(self.db) as conn:
+            row = conn.execute("SELECT loaned_on, returned_on FROM loans WHERE id = ?", (loan_id,)).fetchone()
+            if row is None:
+                raise ValueError("loan not found")
+            if row["returned_on"]:
+                raise ValueError("loan already returned")
+            try:
+                loaned = datetime.fromisoformat(row["loaned_on"]).date()
+            except ValueError as exc:
+                raise ValueError("stored loaned_on is invalid") from exc
+            if returned < loaned:
+                raise ValueError("returned_on must not precede loaned_on")
+            result = conn.execute("UPDATE loans SET returned_on = ? WHERE id = ?", (stamp, loan_id))
+            return result.rowcount == 1
 
     def list_loans(self, limit: int = 100) -> list[sqlite3.Row]:
         with self.db.connect() as conn:
@@ -768,7 +872,15 @@ class BookRepository:
 
     def add_annotation(self, annotation_id: str, book_id: str, kind: str, locator: str, text: str | None = None, note: str | None = None) -> None:
         from .digital import Annotation
-        Annotation(book_id, kind, locator, text, note)
+
+        if not isinstance(annotation_id, str) or not annotation_id.strip():
+            raise ValueError("annotation id is required")
+        if not isinstance(book_id, str) or not book_id.strip():
+            raise ValueError("book id is required")
+        try:
+            Annotation(book_id, kind, locator, text, note)
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise ValueError(str(exc)) from exc
         with transaction(self.db) as conn:
             if conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone() is None:
                 raise ValueError("book not found")
