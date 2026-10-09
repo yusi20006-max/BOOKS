@@ -26,8 +26,9 @@ def test_start_button_disappears_after_first_start(app_session):
     book_id = _book_id(session)
     started_at = session.repository.get(book_id)["reading_started_at"]
     assert started_at
-    # The repeat press is impossible through the UI: the start button is gone
-    # and the recorded date is shown instead.
+    # On the next rerun the page re-reads the row: the start button is gone
+    # (repeat press impossible through the UI) and the date caption shows instead.
+    session.open("مطالعه")
     buttons = [
         (getattr(button, "key", None), button.label) for button in session.at.button
     ]
