@@ -877,8 +877,6 @@ class BookRepository:
             raise ValueError("annotation id is required")
         if not isinstance(book_id, str) or not book_id.strip():
             raise ValueError("book id is required")
-        if not isinstance(locator, str):
-            raise ValueError("annotation locator is required")
         try:
             Annotation(book_id, kind, locator, text, note)
         except (TypeError, ValueError, AttributeError) as exc:

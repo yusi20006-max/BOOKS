@@ -1,9 +1,34 @@
 """Regression tests for Audit/P2 #355 repository validation gaps."""
 
+import json
+
 import pytest
 
 from books.db import BookRepository, Database
-from test_db import book
+
+
+def book(book_id="b1"):
+    return {
+        "id": book_id,
+        "title": "کتاب نمونه",
+        "original_title": None,
+        "authors_json": json.dumps(["نویسنده"], ensure_ascii=False),
+        "translators_json": "[]",
+        "publisher": "ناشر",
+        "pages": 120,
+        "publication_year": 1400,
+        "isbn10": None,
+        "isbn13": "9786000000000",
+        "language": "fa",
+        "genres_json": "[]",
+        "subjects_json": "[]",
+        "summary": None,
+        "cover_url": None,
+        "source_ids_json": "{}",
+        "notes": None,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00",
+    }
 
 
 def _repo(tmp_path):
