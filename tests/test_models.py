@@ -14,8 +14,10 @@ def test_book_keeps_original_display_text_alongside_canonical_values():
     book = Book(title="  كتاب نمونه  ", authors=("  نویسنده‌ٔ اول  ",))
     assert book.display_title == "كتاب نمونه"
     assert book.display_authors == ("نویسنده‌ٔ اول",)
-    assert book.title == "کتاب نمونه"
-    assert book.authors == ("نویسنده اول",)
+    assert book.title == "كتاب نمونه"
+    assert book.authors == ("نویسنده‌ٔ اول",)
+    assert book.search_title == "کتاب نمونه"
+    assert book.search_title == normalize_text(book.title)
 
 
 def test_isbn_normalization_and_validation():
@@ -27,7 +29,8 @@ def test_isbn_normalization_and_validation():
 
 def test_book_normalizes_fields_and_rejects_invalid_values():
     book = Book(title=" كتاب نمونه ", authors=("  نویسنده  ",), isbn13="978-0-306-40615-7")
-    assert book.title == "کتاب نمونه"
+    assert book.title == "كتاب نمونه"
+    assert book.search_title == "کتاب نمونه"
     assert book.authors == ("نویسنده",)
     assert book.isbn13 == "9780306406157"
 

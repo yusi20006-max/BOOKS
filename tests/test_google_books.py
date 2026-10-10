@@ -49,7 +49,8 @@ def test_google_books_maps_persian_result():
     result = GoogleBooksProvider(settings(), client).search("شازده کوچولو", max_results=10)
 
     assert result.total_items == 1
-    assert result.items[0].title == "کتاب نمونه"
+    assert result.items[0].title == "كتاب نمونه"
+    assert result.items[0].search_title == "کتاب نمونه"
     assert result.items[0].isbn13 == "9780306406157"
     assert result.items[0].source_ids["google_books"] == "abc123"
 

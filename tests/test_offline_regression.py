@@ -50,7 +50,7 @@ def test_full_offline_core_contract(tmp_path):
     assert len(response) == 1
     assert provider.calls == 1
 
-    assert repository.get(book_id)["title"] == "شازده کوچولو"
+    assert repository.get(book_id)["title"] == "شازده كوچولو"
 
 
 def test_external_provider_tests_can_be_constructed_without_network():
