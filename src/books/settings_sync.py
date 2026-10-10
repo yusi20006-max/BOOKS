@@ -52,10 +52,8 @@ class SettingsSyncRuntime:
 
     @staticmethod
     def _encode_value(value: Any) -> str:
-        if isinstance(value, (dict, list)):
-            raise ValueError("setting value must be a JSON scalar")
         if not (value is None or isinstance(value, (str, int, float, bool))):
-            raise ValueError("setting value must be a JSON scalar")
+            raise TypeError("setting value must be a JSON scalar")
         encoded = json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
         if len(encoded.encode("utf-8")) > 4096:
             raise ValueError("setting value exceeds 4096 bytes")
