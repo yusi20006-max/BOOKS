@@ -115,6 +115,9 @@ def make_handler(runtime: Runtime):
                 if self.path=="/v1/sync/settings":
                     if not isinstance(request, dict):
                         self._write(400,{"error":"request must be an object"}); return
+                    required = {"device_id", "key", "value", "base_version"}
+                    if not required.issubset(request):
+                        self._write(400,{"error":"device_id, key, value, and base_version are required"}); return
                     runtime.api.check_rate_limit(self.client_address[0])
                     try:
                         result=runtime.settings_sync.apply(
