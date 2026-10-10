@@ -63,3 +63,12 @@ def test_openapi_documents_every_implemented_route():
         "required": ["error"],
         "properties": {"error": {"type": "string"}},
     }
+
+
+def test_search_requires_a_non_empty_query():
+    api = BooksAPI(R(), token="x")
+    for missing in (None, {"q": ""}, {"q": "   "}):
+        with pytest.raises(APIError) as excinfo:
+            api.request("GET", "/v1/search", token="x", query=missing)
+        assert excinfo.value.status == 400
+        assert excinfo.value.message == "query parameter q must not be empty"
