@@ -49,7 +49,9 @@ destination always points to the latest successful backup, while timestamped
 snapshots are pruned to the configured retention count. Backup and state files
 are written with owner-only permissions. The worker stops when the runtime
 server closes, and failures are recorded in the adjacent `.state` file without
-replacing the last successful backup.
+replacing the last successful backup. On restart, the worker reads the last
+successful timestamp from that state file and resumes the remaining interval
+instead of resetting the full schedule.
 
 The scheduler uses SQLite's online backup API and validates the resulting
 database before publishing it. Backups are disabled until a destination is
