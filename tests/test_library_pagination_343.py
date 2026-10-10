@@ -91,11 +91,13 @@ def test_library_header_shows_visible_of_total_and_pages_reach_the_last_book(
     session.click("صفحه بعدی")
     assert any("صفحه 2 از 11" in block.value for block in session.at.caption)
 
-    # The last page exposes the final book — nothing is silently unreachable.
+    # The last page exposes the oldest book (default sort is newest-first) —
+    # nothing is silently unreachable.
     session.at.session_state["library_page"] = 10
     session.open("کتابخانه")
     titles = [block.value for block in session.at.subheader]
-    assert "کتاب 1000" in titles
+    assert "1 از 1001 کتاب" in titles
+    assert "کتاب 0000" in titles
 
 
 def test_small_library_keeps_the_single_page_behaviour(app_session):
