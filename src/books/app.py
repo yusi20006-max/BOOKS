@@ -1426,6 +1426,59 @@ def render_reports() -> None:
     st.download_button("JSON گزارش", report_json(metrics), "books-report.json", "application/json")
     st.download_button("CSV کتاب‌ها", report_csv(rows), "books.csv", "text/csv")
 
+def _settings_flag(env_name: str, value: str | None) -> str:
+    """Indicator for a secret variable: configured state, never the value."""
+    state = "تنظیم شده" if value and value.strip() else "تنظیم نشده"
+    return f"`{env_name}`: **{state}**"
+
+
+def render_settings() -> None:
+    """Read-only panel showing the effective configuration (issue #332)."""
+    settings = load_settings()
+    st.subheader("پیکربندی مؤثر برنامه")
+    st.caption(
+        "این صفحه فقط‌خواندنی است؛ مقادیر از متغیرهای محیطی و فایل ‎.env‎ خوانده "
+        "می‌شوند و در اینجا قابل تغییر نیستند."
+    )
+
+    st.markdown("**پایگاه داده و شبکه**")
+    st.markdown(f"`BOOKS_DB_PATH`: **مسیر پایگاه داده** — `{settings.db_path}`")
+    st.markdown(
+        f"`BOOKS_HOST` / `BOOKS_PORT`: **میزبان و پورت** — "
+        f"`{settings.host}:{settings.port}`"
+    )
+    st.markdown(
+        f"`BOOKS_REQUEST_TIMEOUT_SECONDS`: **مهلت درخواست (ثانیه)** — "
+        f"`{settings.request_timeout_seconds}`"
+    )
+    st.markdown(f"`BOOKS_USER_AGENT`: **عامل کاربری** — `{settings.user_agent}`")
+    st.markdown(
+        f"`OPEN_LIBRARY_BASE_URL`: **آدرس پایه Open Library** — "
+        f"`{settings.open_library_base_url}`"
+    )
+
+    st.markdown("**ارائه‌دهندگان، درگاه‌ها و کلیدها**")
+    st.markdown(
+        f"`BOOKS_AI_BASE_URL`: **آدرس درگاه AI محلی** — "
+        f"`{os.getenv('BOOKS_AI_BASE_URL') or 'http://127.0.0.1:8000/v1'}`"
+    )
+    st.markdown(
+        f"`BOOKS_AI_MODEL`: **مدل درگاه AI محلی** — "
+        f"`{os.getenv('BOOKS_AI_MODEL') or 'local'}`"
+    )
+    fallback_url = os.getenv("BOOKS_AI_FALLBACK_BASE_URL") or "تنظیم نشده"
+    st.markdown(
+        f"`BOOKS_AI_FALLBACK_BASE_URL`: **آدرس درگاه AI پشتیبان** — `{fallback_url}`"
+    )
+    # Secrets are shown as configured/not-configured only — never the value.
+    st.markdown(_settings_flag("GOOGLE_BOOKS_API_KEY", os.getenv("GOOGLE_BOOKS_API_KEY")))
+    st.markdown(_settings_flag("BOOKS_API_TOKEN", os.getenv("BOOKS_API_TOKEN")))
+    st.markdown(_settings_flag("BOOKS_AI_API_KEY", os.getenv("BOOKS_AI_API_KEY")))
+    st.markdown(
+        _settings_flag("BOOKS_AI_FALLBACK_API_KEY", os.getenv("BOOKS_AI_FALLBACK_API_KEY"))
+    )
+
+
 def render_page(page: str) -> None:
     st.title(page)
     st.caption(PAGES[page])
@@ -1473,9 +1526,7 @@ def render_page(page: str) -> None:
     elif page == "آمار مطالعه":
         render_statistics()
     else:
-        settings = load_settings()
-        st.info("تنظیمات برنامه در Issueهای مرتبط تکمیل می‌شود.")
-        st.code(str(settings.db_path), language="text")
+        render_settings()
 
 
 def _inside_streamlit() -> bool:
