@@ -20,6 +20,7 @@ from books.models import Book
 from books.providers.google_books import GoogleBooksProvider
 from books.providers.open_library import OpenLibraryProvider
 from books.scanner import BarcodeScanner
+from books.search_ranking import rank_book_row
 from books.transfer import BookTransferService
 
 PAGES = {
@@ -846,7 +847,7 @@ def render_library() -> None:
     with sort_cols[0]:
         sort_label = st.selectbox(
             "مرتب‌سازی",
-            ("آخرین تغییر", "عنوان", "سال انتشار", "ناشر"),
+            ("آخرین تغییر", "عنوان", "سال انتشار", "ناشر", "مرتبط‌ترین"),
         )
     with sort_cols[1]:
         descending = st.toggle("نزولی", value=True)
@@ -856,6 +857,8 @@ def render_library() -> None:
         "عنوان": "title",
         "سال انتشار": "publication_year",
         "ناشر": "publisher",
+        # Relevance needs a query; browsing falls back to the default order.
+        "مرتبط‌ترین": "updated_at",
     }
 
     signature = "|".join(
@@ -900,13 +903,21 @@ def render_library() -> None:
             ordered = [r for r in ordered if r["language"] == selected_language]
         if selected_year != "همه":
             ordered = [r for r in ordered if str(r["publication_year"]) == selected_year]
-        ordered.sort(
-            key=lambda r: (
-                r[sort_map[sort_label]] is None,
-                r[sort_map[sort_label]] or "",
-            ),
-            reverse=descending,
-        )
+        if sort_label == "مرتبط‌ترین":
+            # Deterministic: a stable newest-first order first, then a stable
+            # relevance sort on top (ties keep the newest-first order).
+            ordered.sort(
+                key=lambda r: (r["updated_at"] or "", r["id"]), reverse=True
+            )
+            ordered.sort(key=lambda r: rank_book_row(query, r), reverse=True)
+        else:
+            ordered.sort(
+                key=lambda r: (
+                    r[sort_map[sort_label]] is None,
+                    r[sort_map[sort_label]] or "",
+                ),
+                reverse=descending,
+            )
         total = len(ordered)
     else:
         ordered = None
