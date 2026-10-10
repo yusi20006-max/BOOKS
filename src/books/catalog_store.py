@@ -44,6 +44,11 @@ class CatalogStore:
             conn.execute("INSERT INTO series_volumes(id,series_id,edition_id,volume_number,title) VALUES(?,?,?,?,?)", (volume.id, volume.series_id, volume.edition_id, volume.number, volume.title))
         return volume.id
 
+    def add_series(self, series: Series) -> str:
+        with transaction(self.db) as conn:
+            conn.execute("INSERT INTO series(id,name,description) VALUES(?,?,?)", (series.id, series.name, series.description))
+        return series.id
+
     def list_series(self) -> list[dict[str, Any]]:
         with self.db.connect() as conn:
             rows=conn.execute("SELECT * FROM series ORDER BY name").fetchall()
@@ -53,6 +58,27 @@ class CatalogStore:
         with self.db.connect() as conn:
             rows=conn.execute("SELECT * FROM translations WHERE edition_id=? ORDER BY language,id", (edition_id,)).fetchall()
         return [Translation(row["id"], row["edition_id"], row["language"], tuple(json.loads(row["translator_ids_json"] or "[]"))) for row in rows]
+
+    def list_editions(self) -> list[dict[str, Any]]:
+        """Editions with their work title, for selectors and views."""
+        with self.db.connect() as conn:
+            rows = conn.execute(
+                "SELECT e.*, w.title AS work_title FROM editions e "
+                "JOIN works w ON w.id = e.work_id ORDER BY w.title, e.id"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_volumes(self) -> list[dict[str, Any]]:
+        """Series volumes with series and work context, for the page listing."""
+        with self.db.connect() as conn:
+            rows = conn.execute(
+                "SELECT v.*, s.name AS series_name, w.title AS work_title "
+                "FROM series_volumes v JOIN series s ON s.id = v.series_id "
+                "JOIN editions e ON e.id = v.edition_id "
+                "JOIN works w ON w.id = e.work_id "
+                "ORDER BY s.name, v.volume_number"
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def compare(self, left: Edition, right: Edition):
         return compare_editions(left, right)

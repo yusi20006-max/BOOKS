@@ -1102,11 +1102,231 @@ def render_annotations() -> None:
 
 
 
+_CATALOG_ERRORS = {
+    "series name is required": "نام مجموعه الزامی است.",
+    "work title is required": "عنوان اثر الزامی است.",
+    "work not found": "اثر موردنظر یافت نشد.",
+    "edition not found": "ویرایش موردنظر یافت نشد.",
+    "volume does not belong to series": "جلد به مجموعه انتخاب‌شده تعلق ندارد.",
+    "volume identifiers are required": "شناسه‌های جلد الزامی است.",
+    "volume number must be positive": "شماره جلد باید بزرگ‌تر از صفر باشد.",
+}
+
+
+def _catalog_error(exc: Exception) -> str:
+    """Persian, user-facing message for a catalog-store failure (issue #341)."""
+    if isinstance(exc, sqlite3.IntegrityError):
+        detail = str(exc)
+        if "volume_number" in detail:
+            return "شماره جلد برای این مجموعه قبلاً ثبت شده است."
+        if "series_volumes.edition_id" in detail:
+            return "این ویرایش قبلاً به این مجموعه اضافه شده است."
+        return "رکورد تکراری است؛ از ثبت مجدد آن خودداری کنید."
+    return _CATALOG_ERRORS.get(str(exc), "ورودی نامعتبر است.")
+
+
 def render_catalog_editions() -> None:
     settings = load_settings()
     store = __import__("books.catalog_store", fromlist=["CatalogStore"]).CatalogStore(Database(settings.db_path))
     store.db.migrate()
+    from books.catalog import Edition, Translation, Work
+    from books.catalog_store import new_id
+    from books.edition_compare import is_duplicate_edition
+    from books.series import Series, Volume
+    from books.translation_views import group_by_translation
+
     st.subheader("مجموعه‌ها و ویرایش‌ها")
+
+    # Action forms come first so records created in this run already appear in
+    # the listings rendered below them.
+    with st.form("catalog-add-series", clear_on_submit=True):
+        st.markdown("**افزودن مجموعه**")
+        series_name = st.text_input("نام مجموعه", key="catalog-series-name")
+        series_desc = st.text_input("توضیح مجموعه", key="catalog-series-desc")
+        if st.form_submit_button("ثبت مجموعه", type="primary"):
+            try:
+                new_series = Series(new_id(), series_name, series_desc or None)
+                store.add_series(new_series)
+            except (ValueError, sqlite3.IntegrityError) as exc:
+                st.error(_catalog_error(exc))
+            else:
+                st.success(f"مجموعه «{new_series.name}» ثبت شد.")
+
+    with st.form("catalog-add-work", clear_on_submit=True):
+        st.markdown("**افزودن اثر و ویرایش**")
+        work_title = st.text_input("عنوان اثر", key="catalog-work-title")
+        publisher = st.text_input("ناشر", key="catalog-work-publisher")
+        year = st.number_input(
+            "سال انتشار", min_value=0, max_value=9999, value=0, key="catalog-work-year"
+        )
+        if st.form_submit_button("ثبت اثر و ویرایش", type="primary"):
+            try:
+                work = Work(new_id(), work_title)
+                store.add_work(work)
+                store.add_edition(
+                    Edition(
+                        new_id(),
+                        work.id,
+                        publisher.strip() or None,
+                        int(year) or None,
+                    )
+                )
+            except (ValueError, sqlite3.IntegrityError) as exc:
+                st.error(_catalog_error(exc))
+            else:
+                st.success(f"اثر «{work.title}» با یک ویرایش ثبت شد.")
+
+    editions = store.list_editions()
+
+    def edition_label(edition_id: str) -> str:
+        row = next(r for r in editions if r["id"] == edition_id)
+        return (
+            f"{row['work_title']} — {row['publisher'] or 'بدون ناشر'} "
+            f"({row['publication_year'] or '—'})"
+        )
+
+    series_rows = store.list_series()
+    if series_rows and editions:
+        with st.form("catalog-add-volume", clear_on_submit=True):
+            st.markdown("**افزودن جلد به مجموعه**")
+            series_choice = st.selectbox(
+                "مجموعه",
+                [s["id"] for s in series_rows],
+                format_func=lambda sid: next(s["name"] for s in series_rows if s["id"] == sid),
+                key="catalog-volume-series",
+            )
+            edition_choice = st.selectbox(
+                "ویرایش",
+                [e["id"] for e in editions],
+                format_func=edition_label,
+                key="catalog-volume-edition",
+            )
+            volume_number = st.number_input(
+                "شماره جلد", min_value=1, value=1, key="catalog-volume-number"
+            )
+            volume_title = st.text_input("عنوان جلد", key="catalog-volume-title")
+            if st.form_submit_button("افزودن جلد به مجموعه", type="primary"):
+                series_row = next(s for s in series_rows if s["id"] == series_choice)
+                try:
+                    store.add_series_volume(
+                        Series(series_row["id"], series_row["name"], series_row["description"]),
+                        Volume(
+                            new_id(),
+                            series_choice,
+                            edition_choice,
+                            int(volume_number),
+                            volume_title or None,
+                        ),
+                    )
+                except (ValueError, sqlite3.IntegrityError) as exc:
+                    st.error(_catalog_error(exc))
+                else:
+                    st.success("جلد به مجموعه اضافه شد.")
+    else:
+        st.info("برای افزودن جلد، ابتدا یک مجموعه و یک ویرایش ثبت کنید.")
+
+    if editions:
+        with st.form("catalog-add-translation", clear_on_submit=True):
+            st.markdown("**ثبت ترجمه**")
+            translation_edition = st.selectbox(
+                "ویرایش برای ترجمه",
+                [e["id"] for e in editions],
+                format_func=edition_label,
+                key="catalog-translation-edition",
+            )
+            translation_language = st.text_input("زبان", key="catalog-translation-language")
+            translation_translators = st.text_input(
+                "مترجمان (با ویرگول)", key="catalog-translation-translators"
+            )
+            if st.form_submit_button("ثبت ترجمه", type="primary"):
+                language = translation_language.strip()
+                if not language:
+                    st.error("زبان ترجمه الزامی است.")
+                else:
+                    translators = tuple(
+                        part.strip()
+                        for part in translation_translators.split(",")
+                        if part.strip()
+                    )
+                    try:
+                        store.add_translation(
+                            Translation(new_id(), translation_edition, language, translators)
+                        )
+                    except (ValueError, sqlite3.IntegrityError) as exc:
+                        st.error(_catalog_error(exc))
+                    else:
+                        st.success(f"ترجمه «{language}» ثبت شد.")
+
+        st.markdown("**ترجمه‌ها بر اساس زبان**")
+        view_choice = st.selectbox(
+            "ترجمه‌های ویرایش",
+            [e["id"] for e in editions],
+            format_func=edition_label,
+            key="catalog-translation-view",
+        )
+        view_row = next(e for e in editions if e["id"] == view_choice)
+        view_edition = Edition(
+            view_row["id"],
+            view_row["work_id"],
+            view_row["publisher"],
+            view_row["publication_year"],
+            view_row["isbn10"],
+            view_row["isbn13"],
+        )
+        grouped = group_by_translation(view_edition, store.list_translations(view_choice))
+        if grouped:
+            for language in sorted(grouped):
+                st.markdown(f"**زبان: {language}**")
+                for view in grouped[language]:
+                    line = view.label
+                    if view.translator_ids:
+                        line += f" — مترجمان: {', '.join(view.translator_ids)}"
+                    st.write(line)
+        else:
+            st.info("برای این ویرایش ترجمه‌ای ثبت نشده است.")
+    else:
+        st.info("برای ثبت ترجمه، ابتدا یک اثر و ویرایش بسازید.")
+
+    if len(editions) >= 2:
+        st.markdown("**مقایسه دو ویرایش**")
+        left_choice = st.selectbox(
+            "ویرایش اول",
+            [e["id"] for e in editions],
+            format_func=edition_label,
+            key="catalog-compare-left",
+        )
+        right_choice = st.selectbox(
+            "ویرایش دوم",
+            [e["id"] for e in editions],
+            format_func=edition_label,
+            key="catalog-compare-right",
+            index=1,
+        )
+
+        def edition_at(edition_id: str) -> Edition:
+            row = next(e for e in editions if e["id"] == edition_id)
+            return Edition(
+                row["id"],
+                row["work_id"],
+                row["publisher"],
+                row["publication_year"],
+                row["isbn10"],
+                row["isbn13"],
+            )
+
+        if st.button("مقایسه ویرایش‌ها", key="catalog-compare-button"):
+            left = edition_at(left_choice)
+            right = edition_at(right_choice)
+            match = store.compare(left, right)
+            reasons = {"isbn": "ISBN", "work": "اثر", "publisher": "ناشر", "year": "سال"}
+            st.write(f"**امتیاز تطابق:** {match.score}")
+            st.write("**نشانه‌ها:** " + (", ".join(reasons.get(r, r) for r in match.reasons) or "—"))
+            if is_duplicate_edition(left, right):
+                st.warning("این دو ویرایش تکراری به نظر می‌رسند.")
+            else:
+                st.info("این دو ویرایش تکراری نیستند.")
+
+    # Existing listing output — unchanged (issue #341 keeps the summary).
     series = store.list_series()
     if series:
         for item in series:
@@ -1114,6 +1334,13 @@ def render_catalog_editions() -> None:
     else:
         st.info("هنوز مجموعه‌ای ثبت نشده است.")
     st.caption("ترجمه‌های هر ویرایش مستقل نگهداری می‌شوند و در لایه نمایش بر اساس زبان گروه‌بندی می‌شوند.")
+
+    volumes = store.list_volumes()
+    if volumes:
+        st.markdown("**جلدهای ثبت‌شده**")
+        for volume in volumes:
+            title = volume["title"] or "بدون عنوان"
+            st.write(f"**{volume['series_name']}** — جلد {volume['volume_number']}: {title}")
 
 
 
