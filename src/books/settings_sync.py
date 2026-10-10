@@ -46,7 +46,10 @@ class SettingsSyncRuntime:
     def _validate_key(key: Any) -> str:
         if not isinstance(key, str) or not _KEY.fullmatch(key):
             raise ValueError("setting key must be a lowercase identifier")
-        if any(part in key.lower() for part in _SECRET_PARTS):
+        # Hyphens are valid in setting names, so normalize separators before
+        # checking credential markers (e.g. api-key and private-key).
+        secret_check_key = key.lower().replace("-", "_")
+        if any(part in secret_check_key for part in _SECRET_PARTS):
             raise ValueError("secret-bearing settings cannot be synchronized")
         return key
 
@@ -65,6 +68,10 @@ class SettingsSyncRuntime:
         if isinstance(since, bool) or not isinstance(since, int) or since < 0:
             raise ValueError("since must be a non-negative integer")
         with self.db.connect() as conn:
+            # Keep the page and revision on one SQLite read snapshot. Without an
+            # explicit transaction, a concurrent writer can commit between the
+            # two SELECTs and advance the revision beyond the returned changes.
+            conn.execute("BEGIN")
             rows = conn.execute(
                 """SELECT version, device_id, key, value_json, updated_at
                    FROM sync_settings_changes WHERE version > ? ORDER BY version""",
@@ -73,6 +80,7 @@ class SettingsSyncRuntime:
             current = conn.execute(
                 "SELECT COALESCE(MAX(version), 0) FROM sync_settings_changes"
             ).fetchone()[0]
+            conn.commit()
         return {
             "revision": current,
             "changes": [
