@@ -12,6 +12,7 @@ from .db import BookRepository, Database
 from .health import missing_tables
 from .mcp import build_server
 from .sync import Change, SyncRuntime
+from .settings_sync import SettingsSyncConflict, SettingsSyncRuntime
 
 
 class Runtime:
@@ -19,6 +20,7 @@ class Runtime:
         self.api=BooksAPI(repository,token=token)
         self.mcp=build_server(repository)
         self.sync=SyncRuntime(database or repository.db)
+        self.settings_sync=SettingsSyncRuntime(database or repository.db)
 
     def mcp_call(self, request: dict, *, client_id: str) -> dict:
         request_id=request.get("id") if isinstance(request, dict) else None
@@ -71,6 +73,16 @@ def make_handler(runtime: Runtime):
                 self._write(200,{"status":"ok"}); return
             if parsed.path=="/openapi.json": self._write(200,runtime.api.openapi()); return
             query={k:v[-1] for k,v in parse_qs(parsed.query).items()}
+            if parsed.path=="/v1/sync/settings":
+                try:
+                    runtime.api.authorize(self._token()); runtime.api.check_rate_limit(self.client_address[0])
+                    since=int(query.get("since","0"))
+                    self._write(200,runtime.settings_sync.changes_since(since))
+                except (ValueError,TypeError) as exc: self._write(400,{"error":str(exc)})
+                except APIError as exc: self._write(exc.status,{"error":exc.message})
+                except Exception:  # noqa: BLE001 - never drop connection, return 500 JSON
+                    self._write(500,{"error":"internal error"})
+                return
             if parsed.path=="/v1/sync/changes":
                 try:
                     runtime.api.authorize(self._token()); runtime.api.check_rate_limit(self.client_address[0])
@@ -98,6 +110,20 @@ def make_handler(runtime: Runtime):
                     try: self._write(200,runtime.mcp_call(request,client_id=self.client_address[0]))
                     except APIError as exc: self._write(exc.status,{"error":exc.message})
                     return
+                if self.path=="/v1/sync/settings":
+                    if not isinstance(request, dict):
+                        self._write(400,{"error":"request must be an object"}); return
+                    runtime.api.check_rate_limit(self.client_address[0])
+                    try:
+                        result=runtime.settings_sync.apply(
+                            device_id=request.get("device_id"), key=request.get("key"),
+                            value=request.get("value"), base_version=request.get("base_version"),
+                        )
+                    except SettingsSyncConflict as exc:
+                        self._write(409,{"error":str(exc),"key":exc.key,"current_version":exc.current_version}); return
+                    except ValueError as exc:
+                        self._write(400,{"error":str(exc)}); return
+                    self._write(200,result); return
                 if self.path=="/v1/sync/changes":
                     if not isinstance(request, dict) or not isinstance(request.get("id"), str) or not request["id"]:
                         self._write(400, {"error": "change id is required"}); return
