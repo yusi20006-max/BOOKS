@@ -20,7 +20,7 @@ class Runtime:
         self.api=BooksAPI(repository,token=token)
         self.mcp=build_server(repository)
         self.sync=SyncRuntime(database or repository.db)
-        self.settings_sync=SettingsSyncRuntime(database or repository.db)
+        self.settings_sync=SettingsSyncRuntime(database or getattr(repository, "db", None))
 
     def mcp_call(self, request: dict, *, client_id: str) -> dict:
         request_id=request.get("id") if isinstance(request, dict) else None
