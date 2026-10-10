@@ -43,6 +43,7 @@ def test_openapi_documents_every_implemented_route():
         "/v1/books/{id}",
         "/v1/search",
         "/v1/sync/changes",
+        "/v1/sync/settings",
         "/mcp",
     }
     assert set(doc["paths"]) == implemented_routes

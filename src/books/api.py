@@ -183,6 +183,18 @@ class BooksAPI:
                         "responses": {"200": {"description": "Search results"}, "401": {"description": "Unauthorized"}, "429": {"description": "Rate limited"}},
                     }
                 },
+                "/v1/sync/settings": {
+                    "get": {
+                        "security": [{"bearerAuth": []}],
+                        "parameters": [{"name": "since", "in": "query", "schema": {"type": "integer", "minimum": 0}}],
+                        "responses": {"200": {"description": "Settings changes since revision"}, "400": {"description": "Invalid revision"}, "401": {"description": "Unauthorized"}},
+                    },
+                    "post": {
+                        "security": [{"bearerAuth": []}],
+                        "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object", "required": ["device_id", "key", "value", "base_version"], "properties": {"device_id": {"type": "string"}, "key": {"type": "string"}, "value": {}, "base_version": {"type": "integer", "minimum": 0}}}}}},
+                        "responses": {"200": {"description": "Setting accepted"}, "400": {"description": "Invalid setting"}, "409": {"description": "Concurrent update conflict"}, "401": {"description": "Unauthorized"}},
+                    },
+                },
                 "/v1/sync/changes": {
                     "get": {
                         "security": [{"bearerAuth": []}],

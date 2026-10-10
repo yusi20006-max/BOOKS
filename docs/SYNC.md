@@ -36,3 +36,20 @@ Change IDs include a short content digest in addition to entity, entity ID, and 
 Applying a change uses one SQLite transaction for deduplication, book/extended-state writes, and the changelog entry. If any part fails, the whole change is rolled back.
 
 Deleting a missing book is accepted but returns applied=false and is recorded so the same change can be replayed safely.
+
+
+## Multi-device user settings (issue #133)
+
+The authenticated runtime exposes `GET /v1/sync/settings?since=<revision>` and
+`POST /v1/sync/settings`. The pull endpoint returns an ordered, durable change
+log and the current revision. Each push must include `device_id`, `key`,
+`value`, and the `base_version` last observed by that device. A stale
+conflicting write returns HTTP 409 and the current version; callers must pull
+and resolve the conflict rather than silently overwriting another device.
+
+Only small JSON scalar preferences are accepted. Keys containing credential
+markers (including token, secret, password, API-key, or private-key terms) are
+rejected so environment credentials cannot be replicated accidentally. The
+endpoint uses the runtime's existing bearer-token authentication and rate limit.
+This is a transport/storage contract for user preferences; environment-derived
+runtime configuration and credentials remain device-local.
