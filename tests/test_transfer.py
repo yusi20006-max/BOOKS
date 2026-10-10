@@ -248,3 +248,168 @@ def test_reversed_reading_dates_are_rejected(tmp_path):
         )
     with pytest.raises(ValueError):
         repo.update_reading_dates(book_id, started_at=None, finished_at=None)
+
+
+def test_json_round_trip_covers_all_related_domains(tmp_path):
+    from datetime import date
+
+    from books.knowledge import KnowledgeEdge, KnowledgeNode
+    from books.knowledge_store import KnowledgeStore
+    from books.reading_journal import ReadingGoal
+    from books.reading_journal_store import ReadingJournalStore
+
+    expected_counts = {
+        "reading_sessions": 1,
+        "reading_goals": 1,
+        "notes": 1,
+        "quotes": 1,
+        "knowledge_nodes": 2,
+        "knowledge_edges": 1,
+        "physical_copies": 1,
+        "loans": 1,
+        "audiobooks": 1,
+        "annotations": 1,
+    }
+
+    source_db = Database(tmp_path / "source.sqlite3")
+    assert source_db.migrate() == 11
+    repository = BookRepository(source_db)
+    book_id = repository.create_book(
+        Book(title="کتاب جامع", authors=("نویسنده",), pages=200)
+    )
+    repository.add_reading_session("session-1", book_id, "2026-09-27", 45, 12, "یادداشت جلسه")
+    repository.add_note("note-1", book_id, "یادداشت متنی", 5)
+    repository.add_quote("quote-1", book_id, "نقل‌قول", 9, "صفحه ۹")
+    repository.add_copy("copy-1", book_id, internal_code="BK-001")
+    repository.add_loan("loan-1", "copy-1", "borrower-1", "2026-09-27", "2026-10-27")
+    repository.add_audiobook("audiobook-1", book_id, "/tmp/audio.mp3", "mp3", 120)
+    repository.add_annotation("ann-1", book_id, "bookmark", "loc-1", "متن", "یادداشت حاشیه")
+    ReadingJournalStore(source_db).add_goal(
+        ReadingGoal("goal-1", 2, 200, date(2026, 9, 1), date(2026, 10, 1))
+    )
+    store = KnowledgeStore(source_db)
+    store.add_node(KnowledgeNode("node-1", "مفهوم اول"))
+    store.add_node(KnowledgeNode("node-2", "مفهوم دوم"))
+    store.add_edge(KnowledgeEdge("node-1", "node-2", "مرتبط"))
+
+    payload = BookTransferService(repository).export_json()
+    data = json.loads(payload)
+    assert data["schema_version"] == 2
+    assert {key: len(data[key]) for key in expected_counts} == expected_counts
+
+    target_db = Database(tmp_path / "target.sqlite3")
+    target_db.migrate()
+    report = BookTransferService(BookRepository(target_db)).import_json(payload)
+    assert int(report) == 1
+    assert dict(report.extras) == expected_counts
+    with target_db.connect() as conn:
+        for table, count in expected_counts.items():
+            actual = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            assert actual == count, f"{table}: {actual} != {count}"
+
+
+def test_reimport_of_related_domains_is_idempotent(tmp_path):
+    source_db = Database(tmp_path / "source.sqlite3")
+    source_db.migrate()
+    repository = BookRepository(source_db)
+    book_id = repository.create_book(Book(title="کتاب", authors=("نویسنده",)))
+    repository.add_reading_session("session-1", book_id, "2026-09-27", 30, 5, None)
+    repository.add_copy("copy-1", book_id)
+    repository.add_loan("loan-1", "copy-1", "borrower-1", "2026-09-27", "2026-10-27")
+    payload = BookTransferService(repository).export_json()
+
+    target_db = Database(tmp_path / "target.sqlite3")
+    target_db.migrate()
+    target = BookTransferService(BookRepository(target_db))
+    first = target.import_json(payload)
+    assert first.extra_count == 3
+
+    second = target.import_json(payload)
+    assert second.imported == 0
+    assert second.updated == 1  # the book itself, by id — merge semantics
+    assert second.extras == ()
+    assert second.skipped == ()
+    with target_db.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM reading_sessions").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM loans").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM physical_copies").fetchone()[0] == 1
+
+
+def test_schema_version_1_payload_still_imports(tmp_path):
+    source_db = Database(tmp_path / "source.sqlite3")
+    source_db.migrate()
+    repository = BookRepository(source_db)
+    repository.create_book(Book(title="کتاب قدیمی", authors=("نویسنده",)))
+    data = json.loads(BookTransferService(repository).export_json())
+
+    # Simulate an export made before schema v2: same key set as version 1.
+    v1_keys = (
+        "books",
+        "book_personal",
+        "tags",
+        "shelves",
+        "book_tags",
+        "book_shelves",
+    )
+    v1 = {key: data[key] for key in v1_keys}
+    v1["schema_version"] = 1
+    v1["exported_at"] = "2026-01-01T00:00:00+00:00"
+
+    target_db = Database(tmp_path / "target.sqlite3")
+    target_db.migrate()
+    report = BookTransferService(BookRepository(target_db)).import_json(
+        json.dumps(v1, ensure_ascii=False)
+    )
+    assert int(report) == 1
+    assert report.extras == ()
+    assert BookRepository(target_db).list()[0]["title"] == "کتاب قدیمی"
+
+
+def test_unknown_json_schema_version_is_rejected(tmp_path):
+    db = Database(tmp_path / "target.sqlite3")
+    db.migrate()
+    with pytest.raises(ValueError, match="unsupported JSON schema version"):
+        BookTransferService(BookRepository(db)).import_json(
+            json.dumps({"schema_version": 99, "books": []})
+        )
+
+
+def test_csv_with_unknown_column_is_rejected(tmp_path):
+    db = Database(tmp_path / "target.sqlite3")
+    db.migrate()
+    service = BookTransferService(BookRepository(db))
+    broken = service.export_csv().replace("title", "book_title", 1)
+    with pytest.raises(ValueError, match="unsupported CSV schema"):
+        service.import_csv(broken)
+
+
+def test_related_rows_with_missing_references_are_skipped_visibly(tmp_path):
+    payload = json.dumps(
+        {
+            "schema_version": 2,
+            "exported_at": "2026-10-09T00:00:00+00:00",
+            "books": [],
+            "reading_sessions": [
+                {
+                    "id": "s1",
+                    "book_id": "missing-book",
+                    "started_at": "2026-09-27",
+                    "minutes": 30,
+                    "pages": 5,
+                    "note": None,
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
+    target_db = Database(tmp_path / "target.sqlite3")
+    target_db.migrate()
+    report = BookTransferService(BookRepository(target_db)).import_json(payload)
+    assert int(report) == 0
+    assert report.extra_count == 0
+    assert (
+        "s1",
+        "reading_sessions: book_id missing-book not found",
+    ) in report.skipped
+    with target_db.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM reading_sessions").fetchone()[0] == 0

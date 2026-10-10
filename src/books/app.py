@@ -593,6 +593,11 @@ def render_transfer() -> None:
     transfer = BookTransferService(repository)
 
     st.subheader("Export")
+    st.caption(
+        "دامنه خروجی JSON: کتاب‌ها، اطلاعات شخصی، برچسب‌ها و قفسه‌ها، جلسات مطالعه، "
+        "اهداف، یادداشت‌ها و نقل‌قول‌ها، مفاهیم و روابط دانش، نسخه‌های فیزیکی و امانت‌ها، "
+        "کتاب‌های صوتی و حاشیه‌نویسی‌ها. پشتیبان کامل SQLite (صفحه پشتیبان‌گیری) همه‌چیز را نگه می‌دارد."
+    )
     st.download_button(
         "دریافت JSON",
         data=transfer.export_json(),
@@ -622,9 +627,10 @@ def render_transfer() -> None:
         except (UnicodeDecodeError, ValueError, KeyError, TypeError) as exc:
             st.error(f"Import ناموفق بود: {exc}")
         else:
-            st.success(
-                f"{report.imported} کتاب جدید وارد شد و {report.updated} رکورد به‌روزرسانی شد."
-            )
+            message = f"{report.imported} کتاب جدید وارد شد و {report.updated} رکورد به‌روزرسانی شد."
+            if report.extra_count:
+                message += f" به‌علاوه {report.extra_count} رکورد جانبی (جلسات، امانت‌ها، دانش و غیره) وارد شد."
+            st.success(message)
             if report.skipped_count:
                 st.warning(f"{report.skipped_count} ردیف وارد نشد:")
                 for book_id, reason in report.skipped[:20]:
