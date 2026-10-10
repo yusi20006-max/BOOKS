@@ -67,5 +67,21 @@ class BackupScheduler:
     def stop(self):
         self._stop.set()
         if self._thread: self._thread.join(timeout=2)
+    def _seconds_until_next_run(self, now: datetime | None = None) -> float:
+        interval = self.schedule.interval_hours * 3600
+        try:
+            state = json.loads(self.state_path.read_text(encoding="utf-8"))
+            last_run = state.get("last_run")
+            if not isinstance(last_run, str):
+                return float(interval)
+            previous = datetime.fromisoformat(last_run)
+            current = now or datetime.now().astimezone()
+            if previous.tzinfo is None:
+                previous = previous.replace(tzinfo=current.tzinfo)
+            return max(0.0, interval - (current - previous).total_seconds())
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return float(interval)
+
     def _loop(self):
-        while not self._stop.wait(self.schedule.interval_hours*3600): self.run_once_recovering()
+        while not self._stop.wait(self._seconds_until_next_run()):
+            self.run_once_recovering()
