@@ -208,6 +208,11 @@ class BookRepository:
                 (limit, offset),
             ).fetchall()
 
+    def count(self) -> int:
+        """Total number of books, independent of any row limit."""
+        with self.db.connect() as conn:
+            return conn.execute("SELECT COUNT(*) AS count FROM books").fetchone()["count"]
+
     def search(self, query: str, limit: int = 100, offset: int = 0) -> list[sqlite3.Row]:
         normalized = normalize_text(query)
         if not normalized:
@@ -271,6 +276,29 @@ class BookRepository:
         if sort_by not in sort_columns:
             raise ValueError("unsupported sort field")
 
+        clauses, params = self._filter_clauses(
+            genre, author, publisher, publication_year, language
+        )
+        where = "WHERE " + " AND ".join(clauses) + " " if clauses else ""
+        direction = "DESC" if descending else "ASC"
+        order = sort_columns[sort_by]
+
+        with self.db.connect() as conn:
+            return conn.execute(
+                f"SELECT * FROM books {where}ORDER BY {order} {direction}, id "
+                "LIMIT ? OFFSET ?",
+                (*params, limit, offset),
+            ).fetchall()
+
+    @staticmethod
+    def _filter_clauses(
+        genre: str | None,
+        author: str | None,
+        publisher: str | None,
+        publication_year: int | None,
+        language: str | None,
+    ) -> tuple[list[str], list[Any]]:
+        """WHERE clauses shared by ``filter_books`` and ``filter_count``."""
         clauses: list[str] = []
         params: list[Any] = []
 
@@ -289,17 +317,26 @@ class BookRepository:
         if publication_year is not None:
             clauses.append("publication_year = ?")
             params.append(publication_year)
+        return clauses, params
 
-        where = "WHERE " + " AND ".join(clauses) + " " if clauses else ""
-        direction = "DESC" if descending else "ASC"
-        order = sort_columns[sort_by]
-
+    def filter_count(
+        self,
+        *,
+        genre: str | None = None,
+        author: str | None = None,
+        publisher: str | None = None,
+        publication_year: int | None = None,
+        language: str | None = None,
+    ) -> int:
+        """Number of books matching the same filters as ``filter_books``."""
+        clauses, params = self._filter_clauses(
+            genre, author, publisher, publication_year, language
+        )
+        where = "WHERE " + " AND ".join(clauses) if clauses else ""
         with self.db.connect() as conn:
             return conn.execute(
-                f"SELECT * FROM books {where}ORDER BY {order} {direction}, id "
-                "LIMIT ? OFFSET ?",
-                (*params, limit, offset),
-            ).fetchall()
+                f"SELECT COUNT(*) AS count FROM books {where}", params
+            ).fetchone()["count"]
 
     READING_STATUSES: ClassVar[dict[str, str]] = {
         "unread": "نخوانده",
