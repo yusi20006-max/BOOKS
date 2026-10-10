@@ -7,10 +7,34 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from .db import BookRepository
+from .db import BookRepository, transaction
 from .models import Book
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+# Version 1 payloads (books/personal/tags/shelves only) must keep importing.
+SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})
+
+# Related-record domains included in the portable JSON format (schema v2):
+# key -> (table, columns, key columns, reference table, reference column).
+# Order matters: book-referenced rows come after the books loop, physical
+# copies before loans, knowledge nodes before edges. Table and column names
+# are a fixed allow-list — never taken from the payload.
+EXTRA_DOMAINS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...], str | None, str | None]] = {
+    "reading_sessions": ("reading_sessions", ("id", "book_id", "started_at", "minutes", "pages", "note"), ("id",), "books", "book_id"),
+    "reading_goals": ("reading_goals", ("id", "target_books", "target_pages", "start_date", "end_date"), ("id",), None, None),
+    "notes": ("notes", ("id", "book_id", "text", "page", "created_at"), ("id",), "books", "book_id"),
+    "quotes": ("quotes", ("id", "book_id", "text", "page", "source", "created_at"), ("id",), "books", "book_id"),
+    "physical_copies": ("physical_copies", ("id", "book_id", "condition", "status", "internal_code"), ("id",), "books", "book_id"),
+    "loans": ("loans", ("id", "copy_id", "borrower_id", "loaned_on", "due_on", "returned_on", "notes"), ("id",), "physical_copies", "copy_id"),
+    "audiobooks": ("audiobooks", ("id", "book_id", "path", "format", "duration_seconds", "position_seconds", "speed", "created_at", "updated_at"), ("id",), "books", "book_id"),
+    "annotations": ("annotations", ("id", "book_id", "kind", "locator", "text", "note", "created_at", "updated_at"), ("id",), "books", "book_id"),
+    "knowledge_nodes": ("knowledge_nodes", ("id", "label", "kind"), ("id",), None, None),
+    "knowledge_edges": ("knowledge_edges", ("source_id", "target_id", "relation"), ("source_id", "target_id", "relation"), "knowledge_nodes", "source_id"),
+}
+
+_EXTRA_INT_COLUMNS = frozenset(
+    {"minutes", "pages", "target_books", "target_pages", "page", "duration_seconds", "position_seconds"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,10 +50,16 @@ class ImportReport:
     imported: int = 0
     updated: int = 0
     skipped: tuple[tuple[str, str], ...] = ()
+    extras: tuple[tuple[str, int], ...] = ()
 
     @property
     def skipped_count(self) -> int:
         return len(self.skipped)
+
+    @property
+    def extra_count(self) -> int:
+        """Rows imported across the related-record domains (schema v2)."""
+        return sum(count for _domain, count in self.extras)
 
     def __int__(self) -> int:
         return self.imported + self.updated
@@ -100,6 +130,10 @@ class BookTransferService:
             shelves = [dict(row) for row in conn.execute("SELECT * FROM shelves ORDER BY id")]
             book_tags = [dict(row) for row in conn.execute("SELECT * FROM book_tags ORDER BY book_id, tag_id")]
             book_shelves = [dict(row) for row in conn.execute("SELECT * FROM book_shelves ORDER BY book_id, shelf_id")]
+            extras: dict[str, list[dict[str, Any]]] = {}
+            for key, (table, _columns, key_columns, _ref_table, _ref_column) in EXTRA_DOMAINS.items():
+                order = ", ".join(key_columns)
+                extras[key] = [dict(row) for row in conn.execute(f"SELECT * FROM {table} ORDER BY {order}")]
         return {
             "books": books,
             "book_personal": personal,
@@ -107,6 +141,7 @@ class BookTransferService:
             "shelves": shelves,
             "book_tags": book_tags,
             "book_shelves": book_shelves,
+            **extras,
         }
 
     def _rows(self) -> list[dict[str, Any]]:
@@ -161,7 +196,7 @@ class BookTransferService:
             data = json.loads(payload)
         except json.JSONDecodeError as exc:
             raise ValueError("invalid JSON") from exc
-        if not isinstance(data, dict) or data.get("schema_version") != SCHEMA_VERSION:
+        if not isinstance(data, dict) or data.get("schema_version") not in SUPPORTED_SCHEMA_VERSIONS:
             raise ValueError("unsupported JSON schema version")
         return data
 
@@ -217,7 +252,77 @@ class BookTransferService:
             imported += row_imported
             updated += row_updated
             skipped.extend(row_skipped)
-        return ImportReport(imported, updated, tuple(skipped))
+        extras = self._apply_extra_domains(data, skipped)
+        return ImportReport(imported, updated, tuple(skipped), extras)
+
+    def _apply_extra_domains(
+        self,
+        data: dict[str, Any],
+        skipped: list[tuple[str, str]],
+    ) -> tuple[tuple[str, int], ...]:
+        """Insert the related-record domains; merge-only and idempotent.
+
+        Rows are keyed by their exported identifiers: a row whose id already
+        exists is left untouched (a re-import is a no-op, never a duplicate),
+        and rows referencing a missing book/copy/node are skipped with a
+        visible reason instead of failing silently.
+        """
+        counts: list[tuple[str, int]] = []
+        db = self.repository.db
+        for key, (table, columns, key_columns, ref_table, ref_column) in EXTRA_DOMAINS.items():
+            rows = data.get(key) or []
+            if not isinstance(rows, list):
+                raise TypeError(f"JSON {key} must be a list")
+            imported = 0
+            with transaction(db) as conn:
+                for row in rows:
+                    if not isinstance(row, dict):
+                        raise TypeError(f"invalid {key} row")
+                    values = self._extra_values(row, columns)
+                    if any(values[column] in (None, "") for column in key_columns):
+                        skipped.append(("", f"{key}: row without an identifier"))
+                        continue
+                    identity = " AND ".join(f"{column} = ?" for column in key_columns)
+                    parameters = tuple(values[column] for column in key_columns)
+                    if conn.execute(f"SELECT 1 FROM {table} WHERE {identity}", parameters).fetchone():
+                        continue  # already present: idempotent re-import
+                    if ref_table is not None:
+                        reference = values[ref_column]
+                        found = conn.execute(
+                            f"SELECT 1 FROM {ref_table} WHERE id = ?", (reference,)
+                        ).fetchone()
+                        if found is None:
+                            skipped.append(
+                                (
+                                    str(values[key_columns[0]]),
+                                    f"{key}: {ref_column} {reference} not found",
+                                )
+                            )
+                            continue
+                    insert_columns = tuple(
+                        column for column in columns if values[column] is not None
+                    )
+                    placeholders = ", ".join("?" for _column in insert_columns)
+                    conn.execute(
+                        f"INSERT INTO {table} ({', '.join(insert_columns)}) VALUES ({placeholders})",
+                        tuple(values[column] for column in insert_columns),
+                    )
+                    imported += 1
+            if imported:
+                counts.append((key, imported))
+        return tuple(counts)
+
+    @staticmethod
+    def _extra_values(row: dict[str, Any], columns: tuple[str, ...]) -> dict[str, Any]:
+        values: dict[str, Any] = {}
+        for column in columns:
+            value = row.get(column)
+            if column in _EXTRA_INT_COLUMNS and value not in (None, ""):
+                value = int(value)
+            elif column == "speed" and value not in (None, ""):
+                value = float(value)
+            values[column] = value
+        return values
 
     def _import_book_row(self, row: dict[str, Any]) -> tuple[int, int, tuple[tuple[str, str], ...]]:
         """Apply one row.
