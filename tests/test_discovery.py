@@ -149,3 +149,27 @@ def test_search_merged_exposes_normalized_candidates():
 
     assert len(merged) == 1
     assert {item.provider for item in merged[0].provenance} == {"a", "b"}
+
+
+def test_search_merged_detailed_exposes_failures_alongside_items():
+    working = FakeProvider((Book(title="کتاب", authors=("نویسنده",)),))
+    failing = FakeProvider(error="boom")
+    service = DiscoveryService([("working", working), ("offline", failing)])
+
+    merged, failures = service.search_merged_detailed("کتاب")
+
+    assert [item.book.title for item in merged] == ["کتاب"]
+    assert [(failure.provider, failure.message) for failure in failures] == [
+        ("offline", "boom")
+    ]
+    # Backward compatibility: search_merged keeps its original contract.
+    assert service.search_merged("کتاب") == merged
+
+
+def test_search_merged_detailed_reports_all_ok_as_no_failures():
+    working = FakeProvider((Book(title="کتاب", authors=("نویسنده",)),))
+    service = DiscoveryService([("working", working)])
+
+    merged, failures = service.search_merged_detailed("کتاب")
+
+    assert merged and failures == ()

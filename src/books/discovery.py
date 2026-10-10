@@ -145,15 +145,37 @@ class DiscoveryService:
         limit: int = 20,
         strategy: str = "parallel",
     ) -> tuple[MergedDiscoveryItem, ...]:
-        return self.merge_results(
-            self.search(
-                query,
-                language=language,
-                start_index=start_index,
-                limit=limit,
-                strategy=strategy,
-            )
+        merged, _failures = self.search_merged_detailed(
+            query,
+            language=language,
+            start_index=start_index,
+            limit=limit,
+            strategy=strategy,
         )
+        return merged
+
+    def search_merged_detailed(
+        self,
+        query: str,
+        *,
+        language: str = "fa",
+        start_index: int = 0,
+        limit: int = 20,
+        strategy: str = "parallel",
+    ) -> tuple[tuple[MergedDiscoveryItem, ...], tuple[ProviderFailure, ...]]:
+        """Merge results and expose provider failures alongside them.
+
+        ``search_merged`` keeps its original contract; callers that need to
+        distinguish "no connectivity" from "no matches" use this accessor.
+        """
+        response = self.search(
+            query,
+            language=language,
+            start_index=start_index,
+            limit=limit,
+            strategy=strategy,
+        )
+        return self.merge_results(response), response.failures
 
     def _call(
         self,
