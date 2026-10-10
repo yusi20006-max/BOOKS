@@ -132,3 +132,51 @@ class SettingsSyncConflict(ValueError):
         self.key = key
         self.current_version = current_version
         super().__init__(f"setting '{key}' changed remotely; current version is {current_version}")
+
+
+
+class SettingsSyncClient:
+    """HTTP client for pushing a preference and pulling the shared change log."""
+
+    def __init__(self, endpoint: str, *, token: str | None = None, timeout: float = 5):
+        self.endpoint = endpoint.rstrip("/")
+        self.token = token
+        self.timeout = timeout
+
+    def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        body = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers = {"Accept": "application/json"}
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        if self.token:
+            headers["Authorization"] = "Bearer " + self.token
+        from urllib.error import HTTPError, URLError
+        from urllib.request import Request, urlopen
+
+        request = Request(self.endpoint + path, data=body, headers=headers, method=method)
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                return json.loads(response.read())
+        except HTTPError as exc:
+            details = json.loads(exc.read() or b"{}")
+            if exc.code == 409:
+                raise SettingsSyncConflict(
+                    str(details.get("key", "")), int(details.get("current_version", 0))
+                ) from exc
+            if 400 <= exc.code < 500:
+                raise ValueError(str(details.get("error", "settings sync request rejected"))) from exc
+            raise ConnectionError("settings sync service unavailable") from exc
+        except (URLError, TimeoutError) as exc:
+            raise ConnectionError("settings sync service unavailable") from exc
+
+    def push(self, *, device_id: str, key: str, value: Any, base_version: int) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            "/v1/sync/settings",
+            {"device_id": device_id, "key": key, "value": value, "base_version": base_version},
+        )
+
+    def pull(self, since: int = 0) -> dict[str, Any]:
+        if isinstance(since, bool) or not isinstance(since, int) or since < 0:
+            raise ValueError("since must be a non-negative integer")
+        return self._request("GET", f"/v1/sync/settings?since={since}")
