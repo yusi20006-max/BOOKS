@@ -14,6 +14,49 @@ from .normalization import normalize_isbn, normalize_text
 from .security import harden_file
 
 
+def _migration_tree_snapshot(directory: Path) -> dict[str, bytes]:
+    return {
+        migration.name: migration.read_bytes()
+        for migration in sorted(directory.glob("[0-9][0-9][0-9]_*.sql"))
+    }
+
+
+def _assert_migration_trees_match(packaged: Path, working_tree: Path) -> None:
+    """Fail loudly when the two migration trees drift (issue #336)."""
+    packaged_files = _migration_tree_snapshot(packaged)
+    tree_files = _migration_tree_snapshot(working_tree)
+    if packaged_files == tree_files:
+        return
+    only_packaged = sorted(set(packaged_files) - set(tree_files))
+    only_tree = sorted(set(tree_files) - set(packaged_files))
+    changed = sorted(
+        name
+        for name in set(packaged_files) & set(tree_files)
+        if packaged_files[name] != tree_files[name]
+    )
+    raise RuntimeError(
+        "migration trees have diverged: src/books/migrations and migrations/ must "
+        f"stay identical — only in packaged: {only_packaged}; only in root: "
+        f"{only_tree}; content differs: {changed}"
+    )
+
+
+def _resolve_migrations_dir() -> Path:
+    """Single entry point for locating the migration source.
+
+    The packaged tree wins when both exist; if both exist they are compared
+    byte-for-byte first so the copies can never diverge silently.
+    """
+    packaged = Path(__file__).resolve().parent / "migrations"
+    working_tree = Path.cwd() / "migrations"
+    if packaged.exists() and working_tree.exists():
+        _assert_migration_trees_match(packaged, working_tree)
+    migrations_dir = packaged if packaged.exists() else working_tree
+    if not migrations_dir.exists():
+        raise FileNotFoundError(f"migrations directory not found: {migrations_dir}")
+    return migrations_dir
+
+
 class Database:
     """Small SQLite boundary with migrations and explicit transactions."""
 
@@ -30,11 +73,14 @@ class Database:
         return conn
 
     def migrate(self) -> int:
-        packaged = Path(__file__).resolve().parent / "migrations"
-        working_tree = Path.cwd() / "migrations"
-        migrations_dir = packaged if packaged.exists() else working_tree
-        if not migrations_dir.exists():
-            raise FileNotFoundError(f"migrations directory not found: {migrations_dir}")
+        """Apply pending migration files; return the version groups touched.
+
+        The ledger records the file names of each applied version group, so a
+        file added later under an already-applied version prefix is applied
+        exactly once on existing databases, and a run interrupted mid-group
+        resumes from its last recorded file instead of re-running it.
+        """
+        migrations_dir = _resolve_migrations_dir()
         with self.connect() as conn:
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -43,25 +89,37 @@ class Database:
                     applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )"""
             )
-            applied = {
-                row["version"]
-                for row in conn.execute("SELECT version FROM schema_migrations")
-            }
+            recorded: dict[int, set[str]] = {}
+            for row in conn.execute("SELECT version, name FROM schema_migrations"):
+                recorded[row["version"]] = {
+                    part.strip() for part in row["name"].split(",") if part.strip()
+                }
             migrations_by_version: dict[int, list[Path]] = {}
             for migration in migrations_dir.glob("[0-9][0-9][0-9]_*.sql"):
                 migrations_by_version.setdefault(int(migration.name[:3]), []).append(migration)
 
             count = 0
             for version in sorted(migrations_by_version):
-                if version in applied:
+                migrations = sorted(migrations_by_version[version], key=lambda m: m.name)
+                applied_files = recorded.get(version)
+                if applied_files is None:
+                    applied_files = set()
+                    conn.execute(
+                        "INSERT INTO schema_migrations(version, name) VALUES (?, '')",
+                        (version,),
+                    )
+                pending = [m for m in migrations if m.name not in applied_files]
+                if not pending:
                     continue
-                migrations = sorted(migrations_by_version[version])
-                for migration in migrations:
+                for migration in pending:
                     conn.executescript(migration.read_text(encoding="utf-8"))
-                conn.execute(
-                    "INSERT INTO schema_migrations(version, name) VALUES (?, ?)",
-                    (version, ", ".join(m.name for m in migrations)),
-                )
+                    applied_files.add(migration.name)
+                    # Record after every file so an interrupted run resumes here.
+                    conn.execute(
+                        "UPDATE schema_migrations SET name = ? WHERE version = ?",
+                        (", ".join(sorted(applied_files)), version),
+                    )
+                    conn.commit()
                 count += 1
         if str(self.path) != ":memory:" and self.path.exists():
             # The database holds the personal library; keep it owner-only.
