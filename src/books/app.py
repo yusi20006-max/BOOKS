@@ -316,12 +316,7 @@ def render_edit_book() -> None:
         st.info("کتابی برای ویرایش وجود ندارد.")
         return
 
-    labels = {row["id"]: row["title"] for row in rows}
-    selected_id = st.selectbox(
-        "کتاب",
-        list(labels),
-        format_func=lambda book_id: labels[book_id],
-    )
+    selected_id = select_book_for_actions(repository, rows)
     row = repository.get(selected_id)
     if row is None:
         st.error("رکورد انتخاب‌شده پیدا نشد.")
@@ -441,12 +436,7 @@ def render_personal_data() -> None:
         st.info("کتابی برای یادداشت وجود ندارد.")
         return
 
-    labels = {row["id"]: row["title"] for row in rows}
-    selected_id = st.selectbox(
-        "کتاب",
-        list(labels),
-        format_func=lambda book_id: labels[book_id],
-    )
+    selected_id = select_book_for_actions(repository, rows)
     personal = repository.get_personal_data(selected_id)
     current_rating = personal["rating"] if personal else None
     current_note = personal["note"] if personal else ""
@@ -490,12 +480,7 @@ def render_organization() -> None:
         st.info("کتابی برای سازمان‌دهی وجود ندارد.")
         return
 
-    labels = {row["id"]: row["title"] for row in rows}
-    selected_id = st.selectbox(
-        "کتاب",
-        list(labels),
-        format_func=lambda book_id: labels[book_id],
-    )
+    selected_id = select_book_for_actions(repository, rows)
     current_tags, current_shelves = repository.get_organization(selected_id)
     tags = st.text_area(
         "برچسب‌ها — هر برچسب در یک خط",
@@ -651,12 +636,7 @@ def render_reading_status() -> None:
         st.info("کتابی برای تغییر وضعیت مطالعه وجود ندارد.")
         return
 
-    labels = {row["id"]: row["title"] for row in rows}
-    selected_id = st.selectbox(
-        "کتاب",
-        list(labels),
-        format_func=lambda book_id: labels[book_id],
-    )
+    selected_id = select_book_for_actions(repository, rows)
     row = repository.get(selected_id)
     if row is None:
         st.error("رکورد انتخاب‌شده پیدا نشد.")
@@ -731,12 +711,7 @@ def render_delete_book() -> None:
         st.info("کتابی برای حذف وجود ندارد.")
         return
 
-    labels = {row["id"]: row["title"] for row in rows}
-    selected_id = st.selectbox(
-        "کتاب",
-        list(labels),
-        format_func=lambda book_id: labels[book_id],
-    )
+    selected_id = select_book_for_actions(repository, rows)
     row = repository.get(selected_id)
     if row is None:
         st.error("رکورد انتخاب‌شده پیدا نشد.")
@@ -786,6 +761,44 @@ def library_row_summary(row) -> dict[str, str]:
         "year": str(row["publication_year"]) if row["publication_year"] else "—",
         "isbn": row["isbn13"] or row["isbn10"] or "—",
     }
+
+
+LIBRARY_PAGE_SIZE = 100
+
+
+def select_book_for_actions(
+    repository: BookRepository,
+    rows: list,
+    label: str = "کتاب",
+    key: str | None = None,
+):
+    """Book selector that stays complete beyond the 1000-row listing cap.
+
+    At or below the cap the widget behaves exactly as before; above it, a
+    search box narrows the options so every book remains selectable.
+    """
+    labels = {row["id"]: row["title"] for row in rows}
+    if repository.count() <= 1000:
+        return st.selectbox(
+            label, list(labels), format_func=lambda book_id: labels[book_id], key=key
+        )
+    st.caption(
+        "کتابخانه بزرگ‌تر از حد نمایش است؛ برای یافتن کتاب از جستجوی زیر استفاده کنید."
+    )
+    needle = st.text_input(
+        "جستجوی کتاب برای انتخاب", key=f"{key or label}-book-search"
+    )
+    if needle.strip():
+        try:
+            labels = {
+                row["id"]: row["title"]
+                for row in repository.search(needle, limit=1000)
+            }
+        except ValueError:
+            labels = {}
+    return st.selectbox(
+        label, list(labels), format_func=lambda book_id: labels[book_id], key=key
+    )
 
 
 def render_library() -> None:
@@ -845,38 +858,87 @@ def render_library() -> None:
         "ناشر": "publisher",
     }
 
+    signature = "|".join(
+        (
+            query.strip(),
+            selected_genre,
+            selected_author,
+            selected_publisher,
+            selected_language,
+            selected_year,
+            sort_label,
+            str(descending),
+        )
+    )
+    if st.session_state.get("library_filter_signature") != signature:
+        st.session_state["library_filter_signature"] = signature
+        st.session_state["library_page"] = 0
+    page = int(st.session_state.get("library_page", 0))
+
+    filters = {
+        "genre": None if selected_genre == "همه" else selected_genre,
+        "author": None if selected_author == "همه" else selected_author,
+        "publisher": None if selected_publisher == "همه" else selected_publisher,
+        "language": None if selected_language == "همه" else selected_language,
+        "publication_year": None if selected_year == "همه" else int(selected_year),
+    }
+
+    capped = False
     if query.strip():
         try:
-            rows = repository.search(query, limit=1000)
+            ordered = repository.search(query, limit=1000)
         except ValueError:
-            rows = []
+            ordered = []
+        capped = len(ordered) == 1000
         if selected_genre != "همه":
-            rows = [r for r in rows if selected_genre in json.loads(r["genres_json"] or "[]")]
+            ordered = [r for r in ordered if selected_genre in json.loads(r["genres_json"] or "[]")]
         if selected_author != "همه":
-            rows = [r for r in rows if selected_author in json.loads(r["authors_json"] or "[]")]
+            ordered = [r for r in ordered if selected_author in json.loads(r["authors_json"] or "[]")]
         if selected_publisher != "همه":
-            rows = [r for r in rows if r["publisher"] == selected_publisher]
+            ordered = [r for r in ordered if r["publisher"] == selected_publisher]
         if selected_language != "همه":
-            rows = [r for r in rows if r["language"] == selected_language]
+            ordered = [r for r in ordered if r["language"] == selected_language]
         if selected_year != "همه":
-            rows = [r for r in rows if str(r["publication_year"]) == selected_year]
-        rows.sort(
+            ordered = [r for r in ordered if str(r["publication_year"]) == selected_year]
+        ordered.sort(
             key=lambda r: (
                 r[sort_map[sort_label]] is None,
                 r[sort_map[sort_label]] or "",
             ),
             reverse=descending,
         )
+        total = len(ordered)
+    else:
+        ordered = None
+        total = repository.filter_count(**filters)
+
+    max_page = max((total - 1) // LIBRARY_PAGE_SIZE, 0)
+    page = min(page, max_page)
+    if max_page:
+        st.session_state["library_page"] = page
+        prev_col, next_col, info_col = st.columns((1, 1, 3))
+        with prev_col:
+            if st.button("صفحه قبلی", disabled=page == 0, key="library-page-prev"):
+                page -= 1
+                st.session_state["library_page"] = page
+        with next_col:
+            if st.button("صفحه بعدی", disabled=page == max_page, key="library-page-next"):
+                page += 1
+                st.session_state["library_page"] = page
+        with info_col:
+            st.caption(f"صفحه {page + 1} از {max_page + 1}")
+    else:
+        st.session_state["library_page"] = 0
+
+    if ordered is not None:
+        rows = ordered[page * LIBRARY_PAGE_SIZE : (page + 1) * LIBRARY_PAGE_SIZE]
     else:
         rows = repository.filter_books(
-            genre=None if selected_genre == "همه" else selected_genre,
-            author=None if selected_author == "همه" else selected_author,
-            publisher=None if selected_publisher == "همه" else selected_publisher,
-            language=None if selected_language == "همه" else selected_language,
-            publication_year=None if selected_year == "همه" else int(selected_year),
+            **filters,
             sort_by=sort_map[sort_label],
             descending=descending,
-            limit=1000,
+            limit=LIBRARY_PAGE_SIZE,
+            offset=page * LIBRARY_PAGE_SIZE,
         )
 
     if not rows:
@@ -889,7 +951,14 @@ def render_library() -> None:
         horizontal=True,
         label_visibility="collapsed",
     )
-    st.subheader(f"{len(rows)} کتاب")
+    if total > len(rows):
+        st.subheader(f"{len(rows)} از {total} کتاب")
+    else:
+        st.subheader(f"{len(rows)} کتاب")
+    if capped:
+        st.caption(
+            "نتایج جستجو محدود به ۱۰۰۰ مورد اول است؛ برای دسترسی بهتر از فیلترها استفاده کنید."
+        )
 
     if view == "فهرستی":
         for row in rows:
@@ -1001,8 +1070,7 @@ def render_annotations() -> None:
     if not rows:
         st.info("ابتدا یک کتاب به کتابخانه اضافه کنید.")
         return
-    labels = {row["id"]: row["title"] for row in rows}
-    book_id = st.selectbox("کتاب", list(labels), format_func=lambda value: labels[value], key="annotation-book")
+    book_id = select_book_for_actions(repository, rows, key="annotation-book")
     st.subheader("حاشیه‌نویسی دیجیتال")
     with st.form("annotation-form"):
         kind = st.selectbox("نوع", ("bookmark", "highlight", "note"), format_func=lambda x: {"bookmark":"نشانک","highlight":"هایلایت","note":"یادداشت"}[x])
@@ -1087,7 +1155,7 @@ def render_ai_assistant() -> None:
     rows=repository.list(limit=1000)
     st.subheader("دستیار هوشمند کتاب")
     if not rows: st.info("ابتدا کتابی به کتابخانه اضافه کنید."); return
-    labels={r["id"]:r["title"] for r in rows}; book_id=st.selectbox("کتاب",list(labels),format_func=lambda x:labels[x],key="ai-book")
+    labels={r["id"]:r["title"] for r in rows}; book_id = select_book_for_actions(repository, rows, key="ai-book")
     action=st.selectbox("عمل",("summary","questions","recommendation","insights"),format_func=lambda x:{"summary":"خلاصه","questions":"پرسش و پاسخ","recommendation":"پیشنهاد","insights":"بینش"}[x])
     context=st.text_area("زمینه یا پرسش")
     if st.button("اجرا",type="primary"):
@@ -1108,8 +1176,7 @@ def render_reading_sessions() -> None:
     if not rows:
         st.info("ابتدا یک کتاب به کتابخانه اضافه کنید.")
         return
-    labels = {row["id"]: row["title"] for row in rows}
-    book_id = st.selectbox("کتاب", list(labels), format_func=lambda value: labels[value])
+    book_id = select_book_for_actions(repository, rows)
     with st.form("reading-session"):
         started_at = st.date_input("تاریخ جلسه")
         minutes = st.number_input("دقیقه", min_value=0, value=30)
@@ -1132,13 +1199,7 @@ def render_audiobooks() -> None:
         st.info("ابتدا یک کتاب اضافه کنید.")
         return
 
-    labels = {row["id"]: row["title"] for row in rows}
-    book_id = st.selectbox(
-        "کتاب",
-        list(labels),
-        format_func=lambda value: labels[value],
-        key="audiobook-book",
-    )
+    book_id = select_book_for_actions(repository, rows, key="audiobook-book")
     audiobooks = repository.list_audiobooks(book_id)
     st.subheader("کتاب‌های صوتی ثبت‌شده")
     if not audiobooks:
