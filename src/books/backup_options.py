@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import os
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -40,10 +41,18 @@ class BackupScheduler:
         self._stop=threading.Event(); self._thread=None
     def _atomic(self,path,data):
         path.parent.mkdir(parents=True,exist_ok=True); temp=path.with_suffix(path.suffix+".tmp")
-        temp.write_bytes(data); temp.replace(path)
+        temp.write_bytes(data); os.chmod(temp,0o600); temp.replace(path)
     def run_once(self)->Path:
-        data=self.service.create_backup_bytes(); self._atomic(self.destination,data)
-        self._atomic(self.state_path,json.dumps({"last_run":datetime.now().astimezone().isoformat(),"status":"ok"}).encode())
+        data=self.service.create_backup_bytes()
+        stamp=datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%f%z")
+        archive=self.destination.with_name(f"{self.destination.stem}-{stamp}{self.destination.suffix}")
+        self._atomic(archive,data)
+        try:
+            self._atomic(self.destination,data)
+            self._atomic(self.state_path,json.dumps({"last_run":datetime.now().astimezone().isoformat(),"status":"ok"}).encode())
+        except Exception:
+            archive.unlink(missing_ok=True)
+            raise
         self._prune(); return self.destination
     def _prune(self):
         candidates=sorted(self.destination.parent.glob(self.destination.stem+"-*"+self.destination.suffix),key=lambda p:p.stat().st_mtime,reverse=True)
@@ -58,5 +67,21 @@ class BackupScheduler:
     def stop(self):
         self._stop.set()
         if self._thread: self._thread.join(timeout=2)
+    def _seconds_until_next_run(self, now: datetime | None = None) -> float:
+        interval = self.schedule.interval_hours * 3600
+        try:
+            state = json.loads(self.state_path.read_text(encoding="utf-8"))
+            last_run = state.get("last_run")
+            if not isinstance(last_run, str):
+                return float(interval)
+            previous = datetime.fromisoformat(last_run)
+            current = now or datetime.now().astimezone()
+            if previous.tzinfo is None:
+                previous = previous.replace(tzinfo=current.tzinfo)
+            return max(0.0, interval - (current - previous).total_seconds())
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return float(interval)
+
     def _loop(self):
-        while not self._stop.wait(self.schedule.interval_hours*3600): self.run_once_recovering()
+        while not self._stop.wait(self._seconds_until_next_run()):
+            self.run_once_recovering()

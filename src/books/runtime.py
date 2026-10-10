@@ -8,6 +8,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 from .api import APIError, BooksAPI
+from .backup import BackupService
+from .backup_options import BackupSchedule, BackupScheduler
 from .db import BookRepository, Database
 from .health import missing_tables
 from .mcp import build_server
@@ -194,9 +196,48 @@ def check_bind_auth(host, token, *, allow_unauthenticated: bool = False, warn=pr
     )
 
 
-def create_server(host,port,db_path,*,token=None):
-    database=Database(db_path); database.migrate()
-    return ThreadingHTTPServer((host,port),make_handler(Runtime(BookRepository(database),token=token,database=database)))
+class BooksHTTPServer(ThreadingHTTPServer):
+    """HTTP server that owns and stops its optional scheduled-backup worker."""
+
+    backup_scheduler: BackupScheduler | None = None
+
+    def server_close(self):
+        if self.backup_scheduler is not None:
+            self.backup_scheduler.stop()
+        super().server_close()
+
+
+def create_server(
+    host, port, db_path, *, token=None, backup_path=None,
+    backup_interval_hours=None, backup_retention=None,
+):
+    database = Database(db_path)
+    database.migrate()
+    server = BooksHTTPServer(
+        (host, port),
+        make_handler(Runtime(BookRepository(database), token=token, database=database)),
+    )
+    configured_path = backup_path if backup_path is not None else os.getenv("BOOKS_BACKUP_PATH", "").strip()
+    if configured_path:
+        try:
+            interval = backup_interval_hours if backup_interval_hours is not None else int(
+                os.getenv("BOOKS_BACKUP_INTERVAL_HOURS", "24")
+            )
+            retention = backup_retention if backup_retention is not None else int(
+                os.getenv("BOOKS_BACKUP_RETENTION", "5")
+            )
+            scheduler = BackupScheduler(
+                BackupService(db_path), BackupSchedule(interval), configured_path, retention=retention
+            )
+        except (TypeError, ValueError) as exc:
+            server.server_close()
+            raise ValueError(
+                "invalid scheduled backup configuration; use BOOKS_BACKUP_INTERVAL_HOURS >= 1 "
+                "and BOOKS_BACKUP_RETENTION >= 1"
+            ) from exc
+        server.backup_scheduler = scheduler
+        scheduler.start()
+    return server
 
 
 def main():
