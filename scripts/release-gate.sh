@@ -57,6 +57,7 @@ implemented_routes = {
     "/v1/books/{id}",
     "/v1/search",
     "/v1/sync/changes",
+    "/v1/sync/settings",
     "/mcp",
 }
 assert set(payload["paths"]) == implemented_routes, (
@@ -101,4 +102,26 @@ request = urllib.request.Request(base + "/v1/sync/changes?since=0", headers=head
 with urllib.request.urlopen(request, timeout=3) as response:
     payload = json.load(response)
 assert payload["changes"][0]["id"] == change["id"]
+
+setting = {
+    "device_id": "release-gate",
+    "key": "theme",
+    "value": "dark",
+    "base_version": 0,
+}
+request = urllib.request.Request(
+    base + "/v1/sync/settings",
+    data=json.dumps(setting).encode(),
+    headers={"Content-Type": "application/json", **headers},
+    method="POST",
+)
+with urllib.request.urlopen(request, timeout=3) as response:
+    payload = json.load(response)
+assert payload["accepted"] is True and payload["applied"] is True
+
+request = urllib.request.Request(base + "/v1/sync/settings?since=0", headers=headers)
+with urllib.request.urlopen(request, timeout=3) as response:
+    payload = json.load(response)
+assert payload["changes"][0]["key"] == "theme"
+
 PY
