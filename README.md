@@ -19,6 +19,10 @@ The Streamlit UI is the user-facing application. Any of the following starts it 
 - Source checkout without installing (Termux/proot included): from the repository root, run `PYTHONPATH=src streamlit run src/books/app.py`
 - Docker: the image entrypoint starts the UI automatically, e.g. `docker run --rm -p 8501:8501 books` (it resolves the packaged module and exits non-zero with an actionable error if no app file can be resolved)
 
+## AI assistant configuration
+
+The «دستیار هوشمند» page reads its gateways from the environment. The local gateway defaults to `BOOKS_AI_BASE_URL=http://127.0.0.1:8000/v1` with `BOOKS_AI_MODEL` and optional `BOOKS_AI_API_KEY`. Setting `BOOKS_AI_FALLBACK_BASE_URL` enables a second gateway (`BOOKS_AI_FALLBACK_MODEL`, `BOOKS_AI_FALLBACK_API_KEY`) used when the local one fails. Every supported variable is listed with placeholder values in `.env.example`.
+
 ## Sync contract
 
 The runtime sync endpoint accepts book changes using `create`, `update`, `upsert`, and `delete` operations. `upsert` creates the book when `entity_id` does not exist and updates the existing book when it does. Change IDs remain idempotent: replaying an already-applied change returns `applied: false` and does not apply the change again.

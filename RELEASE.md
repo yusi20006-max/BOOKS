@@ -1,4 +1,4 @@
-# BOOKS 1.0.0 Release
+# BOOKS 1.1.0 Release
 
 BOOKS is a Persian-first, offline-first personal library application.
 

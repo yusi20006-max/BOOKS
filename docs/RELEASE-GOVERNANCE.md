@@ -24,7 +24,7 @@ The exact required check name should match the stable CI check exposed by `.gith
 - The release version is defined by `src/books/__init__.py`.
 - Packaging consumes that value through setuptools dynamic metadata.
 - Release tags use the `vMAJOR.MINOR.PATCH` format.
-- `v1.0.0` must point to the exact verified release commit on `main`.
+- Each release tag must point to the exact verified release commit on `main` (the latest release is `v1.1.0`).
 - Do not move or recreate an existing release tag.
 - Never create a release tag from a feature branch.
 
@@ -54,10 +54,10 @@ The release gate is implemented by `scripts/release-gate.sh` and CI.
 - [ ] Full CI is green for the exact release commit.
 - [ ] Final E2E audit is complete.
 - [ ] Release notes/changelog are prepared.
-- [ ] Create `v1.0.0` only after all checks above pass.
+- [ ] Create the release tag (currently `v1.1.0`) only after all checks above pass.
 - [ ] Verify the tag points at the intended `main` commit.
 - [ ] Publish the GitHub release from that tag.
 
 ## Current release boundary
 
-Issue #291 establishes the governance contract and documentation. It does **not** create `v1.0.0`. Final E2E validation remains the next phase.
+Issue #291 established the governance contract and documentation. Releases `v1.0.0` and `v1.1.0` have since been created from verified `main` commits after the full gate passed. This checklist applies to the current release (`v1.1.0`) and to every subsequent tag.
