@@ -11,11 +11,12 @@ The CI workflow runs:
 3. Offline SQLite smoke/migration check
 4. Docker image build after tests pass
 
-The job name to require in repository branch protection is:
+The check name to require in repository branch protection is:
 
-- `test` — Lint + tests + smoke
+- `Lint + tests + smoke` — the workflow job with id `test` (GitHub shows this
+  job name as the check run; `docs/RELEASE-GOVERNANCE.md` refers to the same name)
 
-The Docker job depends on `test`.
+The Docker job depends on the `test` job.
 
 ## Releases
 
