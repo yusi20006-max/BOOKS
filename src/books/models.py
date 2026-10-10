@@ -33,12 +33,13 @@ class Book:
     display_translators: tuple[str, ...] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        display_title = _display_text(self.title)
-        display_original_title = _display_text(self.original_title) or None
-        display_authors = _display_people(self.authors)
-        display_translators = _display_people(self.translators)
-        title = normalize_text(self.title)
-        if not title:
+        # Display-fidelity policy (issue #342): the stored fields keep the
+        # user-typed text (Persian digits, ZWNJ, line breaks); the canonical
+        # form from ``normalize_text`` is only used for matching, searching
+        # and comparison at the point of use (``search_title``, repository
+        # SQL, ranking keys) — never written back over the stored value.
+        title = _display_text(self.title)
+        if not normalize_text(title):
             raise ValueError("title is required")
         if self.pages is not None and self.pages < 0:
             raise ValueError("pages must be non-negative")
@@ -52,19 +53,22 @@ class Book:
         if isbn13 is not None and not validate_isbn13(isbn13):
             raise ValueError("invalid ISBN-13")
 
-        object.__setattr__(self, "display_title", display_title)
+        object.__setattr__(self, "display_title", title)
+        display_original_title = _display_text(self.original_title) or None
+        display_authors = _display_people(self.authors)
+        display_translators = _display_people(self.translators)
         object.__setattr__(self, "display_original_title", display_original_title)
         object.__setattr__(self, "display_authors", display_authors)
         object.__setattr__(self, "display_translators", display_translators)
         object.__setattr__(self, "title", title)
-        object.__setattr__(self, "original_title", normalize_text(self.original_title) or None)
-        object.__setattr__(self, "authors", _clean_people(self.authors))
-        object.__setattr__(self, "translators", _clean_people(self.translators))
-        object.__setattr__(self, "publisher", normalize_text(self.publisher) or None)
-        object.__setattr__(self, "language", normalize_text(self.language) or None)
-        object.__setattr__(self, "genres", _clean_values(self.genres))
-        object.__setattr__(self, "subjects", _clean_values(self.subjects))
-        object.__setattr__(self, "summary", normalize_text(self.summary) or None)
+        object.__setattr__(self, "original_title", display_original_title)
+        object.__setattr__(self, "authors", display_authors)
+        object.__setattr__(self, "translators", display_translators)
+        object.__setattr__(self, "publisher", _display_text(self.publisher) or None)
+        object.__setattr__(self, "language", _display_text(self.language) or None)
+        object.__setattr__(self, "genres", _display_people(self.genres))
+        object.__setattr__(self, "subjects", _display_people(self.subjects))
+        object.__setattr__(self, "summary", _display_text(self.summary) or None)
         object.__setattr__(self, "notes", self.notes)
         object.__setattr__(self, "isbn10", isbn10)
         object.__setattr__(self, "isbn13", isbn13)
@@ -73,14 +77,6 @@ class Book:
     @property
     def search_title(self) -> str:
         return normalize_text(self.title)
-
-
-def _clean_values(values: tuple[str, ...] | list[str]) -> tuple[str, ...]:
-    return tuple(value for value in (normalize_text(v) for v in values) if value)
-
-
-def _clean_people(values: tuple[str, ...] | list[str]) -> tuple[str, ...]:
-    return tuple(value.replace("\u200c", " ") for value in _clean_values(values))
 
 
 def _display_text(value: str | None) -> str:

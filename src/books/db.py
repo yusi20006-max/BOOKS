@@ -70,6 +70,14 @@ class Database:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA busy_timeout = 5000")
+        # Canonical matching form for display-fidelity storage (issue #342):
+        # text columns keep the user-typed text, so every comparison applies
+        # ``normalize_text`` on the stored side as well as the query side.
+        # ``normalize_text(None)`` is "" so NULL columns simply never match.
+        # Rows written before this change keep their canonical stored text
+        # (displayed as-is); they keep matching because normalization is
+        # idempotent, so no migration or backfill is required.
+        conn.create_function("books_norm", 1, normalize_text, deterministic=True)
         return conn
 
     def migrate(self) -> int:
@@ -293,10 +301,11 @@ class BookRepository:
         clauses = []
         params: list[str] = []
         for column in columns:
-            expression = f"REPLACE({column}, char(8204), ' ')"
+            normalized_column = f"books_norm({column})"
+            expression = f"REPLACE({normalized_column}, char(8204), ' ')"
             clauses.append(f"{expression} LIKE ?")
             params.append(spaced_pattern)
-            clauses.append(f"{column} LIKE ?")
+            clauses.append(f"{normalized_column} LIKE ?")
             params.append(isbn_pattern if column in {"isbn10", "isbn13"} else pattern)
 
         clauses_sql = " OR ".join(clauses)
@@ -369,7 +378,7 @@ class BookRepository:
             if value:
                 normalized = normalize_text(value)
                 if normalized:
-                    clauses.append(f"{column} LIKE ?")
+                    clauses.append(f"books_norm({column}) LIKE ?")
                     params.append(f"%{normalized}%")
 
         if publication_year is not None:
@@ -752,7 +761,7 @@ class BookRepository:
             title = normalize_text(book.title)
             if title:
                 rows = conn.execute(
-                    "SELECT * FROM books WHERE title = ?",
+                    "SELECT * FROM books WHERE books_norm(title) = ?",
                     (title,),
                 ).fetchall()
                 author_keys = {normalize_text(author).casefold() for author in book.authors}
