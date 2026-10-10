@@ -28,7 +28,17 @@ def test_settings_sync_rejects_stale_conflicting_writes(tmp_path):
     assert runtime.changes_since(0)["revision"] == 1
 
 
-@pytest.mark.parametrize("key", ["api_key", "provider.password", "auth_token", "private_key"])
+@pytest.mark.parametrize(
+    "key",
+    [
+        "api_key",
+        "api-key",
+        "private-key",
+        "provider.password",
+        "auth_token",
+        "private_key",
+    ],
+)
 def test_settings_sync_rejects_secrets(tmp_path, key):
     runtime = SettingsSyncRuntime(Database(tmp_path / "settings.sqlite3"))
     with pytest.raises(ValueError, match="secret-bearing"):
@@ -81,6 +91,35 @@ def test_settings_sync_client_push_pull_and_conflict(tmp_path):
         assert pulled["changes"][0]["value"] == "dark"
         with pytest.raises(SettingsSyncConflict):
             client.push(device_id="tablet", key="theme", value="light", base_version=0)
+    finally:
+        server.shutdown()
+        thread.join(timeout=3)
+
+
+
+@pytest.mark.parametrize("missing", ["device_id", "key", "value", "base_version"])
+def test_settings_sync_http_rejects_missing_required_fields(tmp_path, missing):
+    server = create_server("127.0.0.1", 0, str(tmp_path / "books.sqlite3"), token="secret")
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = {
+            "device_id": "phone",
+            "key": "theme",
+            "value": "dark",
+            "base_version": 0,
+        }
+        payload.pop(missing)
+        request = Request(
+            f"http://127.0.0.1:{server.server_port}/v1/sync/settings",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json", "Authorization": "Bearer secret"},
+            method="POST",
+        )
+        with pytest.raises(HTTPError) as exc:
+            urlopen(request)
+        assert exc.value.code == 400
+        assert missing in exc.value.read().decode()
     finally:
         server.shutdown()
         thread.join(timeout=3)
