@@ -77,3 +77,28 @@ def test_backup_scheduler_retains_only_newest_timestamped_snapshots(tmp_path):
         scheduler.run_once()
     assert destination.exists()
     assert len(list(destination.parent.glob("latest-*.sqlite3"))) == 2
+
+
+def test_scheduler_restores_remaining_delay_after_runtime_restart(tmp_path):
+    from datetime import datetime, timedelta, timezone
+
+    source = tmp_path / "books.sqlite3"
+    Database(source).migrate()
+    destination = tmp_path / "backups" / "latest.sqlite3"
+    scheduler = BackupScheduler(BackupService(source), BackupSchedule(24), destination)
+    now = datetime(2026, 10, 10, 12, tzinfo=timezone.utc)
+    scheduler.state_path.parent.mkdir(parents=True)
+    scheduler.state_path.write_text(
+        json.dumps({"last_run": (now - timedelta(hours=2)).isoformat(), "status": "ok"}),
+        encoding="utf-8",
+    )
+    assert scheduler._seconds_until_next_run(now) == pytest.approx(22 * 3600)
+
+
+def test_scheduler_uses_full_interval_when_no_successful_run_is_recorded(tmp_path):
+    source = tmp_path / "books.sqlite3"
+    Database(source).migrate()
+    scheduler = BackupScheduler(
+        BackupService(source), BackupSchedule(6), tmp_path / "backups" / "latest.sqlite3"
+    )
+    assert scheduler._seconds_until_next_run() == 6 * 3600
