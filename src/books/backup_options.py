@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import os
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -40,10 +41,18 @@ class BackupScheduler:
         self._stop=threading.Event(); self._thread=None
     def _atomic(self,path,data):
         path.parent.mkdir(parents=True,exist_ok=True); temp=path.with_suffix(path.suffix+".tmp")
-        temp.write_bytes(data); temp.replace(path)
+        temp.write_bytes(data); os.chmod(temp,0o600); temp.replace(path)
     def run_once(self)->Path:
-        data=self.service.create_backup_bytes(); self._atomic(self.destination,data)
-        self._atomic(self.state_path,json.dumps({"last_run":datetime.now().astimezone().isoformat(),"status":"ok"}).encode())
+        data=self.service.create_backup_bytes()
+        stamp=datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%f%z")
+        archive=self.destination.with_name(f"{self.destination.stem}-{stamp}{self.destination.suffix}")
+        self._atomic(archive,data)
+        try:
+            self._atomic(self.destination,data)
+            self._atomic(self.state_path,json.dumps({"last_run":datetime.now().astimezone().isoformat(),"status":"ok"}).encode())
+        except Exception:
+            archive.unlink(missing_ok=True)
+            raise
         self._prune(); return self.destination
     def _prune(self):
         candidates=sorted(self.destination.parent.glob(self.destination.stem+"-*"+self.destination.suffix),key=lambda p:p.stat().st_mtime,reverse=True)
