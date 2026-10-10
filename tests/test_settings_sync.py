@@ -65,3 +65,22 @@ def test_settings_sync_http_transport_requires_auth_and_supports_pull(tmp_path):
     finally:
         server.shutdown()
         thread.join(timeout=3)
+
+
+def test_settings_sync_client_push_pull_and_conflict(tmp_path):
+    from books.settings_sync import SettingsSyncClient
+
+    server = create_server("127.0.0.1", 0, str(tmp_path / "books.sqlite3"), token="secret")
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        client = SettingsSyncClient(f"http://127.0.0.1:{server.server_port}", token="secret")
+        assert client.push(device_id="phone", key="theme", value="dark", base_version=0)["applied"]
+        pulled = client.pull()
+        assert pulled["changes"][0]["key"] == "theme"
+        assert pulled["changes"][0]["value"] == "dark"
+        with pytest.raises(SettingsSyncConflict):
+            client.push(device_id="tablet", key="theme", value="light", base_version=0)
+    finally:
+        server.shutdown()
+        thread.join(timeout=3)
