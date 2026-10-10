@@ -27,7 +27,7 @@ PAGES = {
     "افزودن کتاب": "جستجو و انتخاب کتاب از منابع مختلف",
     "تأیید و ویرایش": "اصلاح و اعتبارسنجی اطلاعات قبل از ذخیره",
     "ویرایش کتاب": "ویرایش کتاب‌های ذخیره‌شده",
-    "حذف کتاب": "حذف امن کتاب و بررسی Duplicate",
+    "حذف کتاب": "حذف امن کتاب از کتابخانه",
     "برچسب و قفسه": "علاقه‌مندی، برچسب و قفسه‌های شخصی",
     "انتقال داده": "Import و Export امن کتابخانه",
     "پشتیبان‌گیری": "Backup و Restore امن SQLite",
@@ -133,7 +133,7 @@ def render_candidate(candidate: MergedDiscoveryItem, index: int) -> None:
             st.session_state.pop("edited_candidate", None)
             st.session_state.pop("edited_candidate_source", None)
             st.session_state.pop("saved_book_id", None)
-            st.success("این نتیجه انتخاب شد؛ مرحله تأیید و ویرایش در Issue بعدی انجام می‌شود.")
+            st.success("این نتیجه انتخاب شد؛ برای تأیید و ویرایش، از فهرست کناری صفحه «تأیید و ویرایش» را باز کنید.")
 
 
 
@@ -346,8 +346,12 @@ def render_edit_book() -> None:
         except sqlite3.IntegrityError:
             st.error("تکمیل metadata باعث ایجاد Duplicate شد و ذخیره نشد.")
         else:
+            changed = enriched != book
             book = enriched
-            st.success("metadata با fallback و refresh به‌روزرسانی شد.")
+            if changed:
+                st.success("metadata با fallback و refresh به‌روزرسانی شد.")
+            else:
+                st.info("metadata جدیدی از منابع پیدا نشد؛ رکورد تغییری نکرد.")
 
     with st.form("edit-library-book"):
         title = st.text_input("عنوان", value=book.title)

@@ -109,8 +109,11 @@ class BooksAPI:
             limit, offset = self._pagination(query)
             return [serialize_book_row(x) for x in self.repo.list(limit, offset)]
         if method == "GET" and path == "/v1/search":
+            q = query.get("q", "").strip()
+            if not q:
+                raise APIError(400, "query parameter q must not be empty")
             limit, offset = self._pagination(query)
-            return [serialize_book_row(x) for x in self.repo.search(query.get("q", ""), limit, offset)]
+            return [serialize_book_row(x) for x in self.repo.search(q, limit, offset)]
         if method == "GET" and path.startswith("/v1/books/"):
             row = self.repo.get(path.rsplit("/", 1)[1])
             if row is None:

@@ -117,8 +117,12 @@ def make_handler(runtime: Runtime):
                     if not isinstance(request["changed_at"], str) or not request["changed_at"]:
                         self._write(400, {"error": "changed_at must be a non-empty string"}); return
                     runtime.api.check_rate_limit(self.client_address[0])
-                    change=Change(request["id"],request["entity"],request["entity_id"],request["operation"],request["version"],request["payload"],request["changed_at"])
-                    applied=runtime.sync.apply(change)
+                    try:
+                        change=Change(request["id"],request["entity"],request["entity_id"],request["operation"],request["version"],request["payload"],request["changed_at"])
+                        applied=runtime.sync.apply(change)
+                    except ValueError as exc:
+                        self._write(400,{"error":str(exc)})
+                        return
                     self._write(200,{"accepted":True,"id":change.id,"applied":applied})
                     return
                 self._write(404,{"error":"endpoint not found"})
