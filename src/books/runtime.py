@@ -11,8 +11,8 @@ from .api import APIError, BooksAPI
 from .db import BookRepository, Database
 from .health import missing_tables
 from .mcp import build_server
-from .sync import Change, SyncRuntime
 from .settings_sync import SettingsSyncConflict, SettingsSyncRuntime
+from .sync import Change, SyncRuntime
 
 
 class Runtime:
@@ -121,7 +121,7 @@ def make_handler(runtime: Runtime):
                         )
                     except SettingsSyncConflict as exc:
                         self._write(409,{"error":str(exc),"key":exc.key,"current_version":exc.current_version}); return
-                    except ValueError as exc:
+                    except (ValueError, TypeError) as exc:
                         self._write(400,{"error":str(exc)}); return
                     self._write(200,result); return
                 if self.path=="/v1/sync/changes":
