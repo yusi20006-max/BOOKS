@@ -1,7 +1,7 @@
 import json
 import threading
-from urllib.request import Request, urlopen
 from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 import pytest
 
