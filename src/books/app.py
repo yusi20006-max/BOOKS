@@ -951,12 +951,28 @@ def render_discovery() -> None:
             ]
         )
         with st.spinner("در حال جستجو در منابع کتاب..."):
-            response = service.search_merged(query.strip(), language="fa", limit=limit)
-        st.session_state["discovery_candidates"] = response
+            candidates, failures = service.search_merged_detailed(
+                query.strip(), language="fa", limit=limit
+            )
+        st.session_state["discovery_candidates"] = candidates
+        st.session_state["discovery_failures"] = failures
 
-    candidates = st.session_state.get("discovery_candidates", ())
-    if not candidates:
+    failures = st.session_state.get("discovery_failures", ())
+    if failures:
+        names = "، ".join(failure.provider for failure in failures)
+        st.warning(
+            f"اتصال به این منابع ممکن نبود: {names}. "
+            "نتایج منابع در دسترس نمایش داده می‌شود؛ کتابخانه به‌صورت آفلاین هم قابل استفاده است."
+        )
+
+    if "discovery_candidates" not in st.session_state:
         st.info("برای شروع، عنوان، نام نویسنده یا ISBN را جستجو کنید.")
+        return
+
+    candidates = st.session_state["discovery_candidates"]
+    if not candidates:
+        if not failures:
+            st.info("نتیجه‌ای یافت نشد؛ عبارت دیگری را امتحان کنید.")
         return
 
     st.subheader(f"{len(candidates)} نتیجه")
