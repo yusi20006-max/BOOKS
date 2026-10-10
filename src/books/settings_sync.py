@@ -20,8 +20,10 @@ class SettingsSyncRuntime:
     instead of silently overwriting another device's newer value.
     """
 
-    def __init__(self, db: Database):
+    def __init__(self, db: Database | None):
         self.db = db
+        if self.db is None:
+            return
         with self.db.connect() as conn:
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS sync_settings (
@@ -61,6 +63,8 @@ class SettingsSyncRuntime:
         return encoded
 
     def changes_since(self, since: int = 0) -> dict[str, Any]:
+        if self.db is None:
+            raise RuntimeError("settings sync requires a database")
         if isinstance(since, bool) or not isinstance(since, int) or since < 0:
             raise ValueError("since must be a non-negative integer")
         with self.db.connect() as conn:
@@ -87,6 +91,8 @@ class SettingsSyncRuntime:
         }
 
     def apply(self, *, device_id: Any, key: Any, value: Any, base_version: Any) -> dict[str, Any]:
+        if self.db is None:
+            raise RuntimeError("settings sync requires a database")
         if not isinstance(device_id, str) or not device_id.strip() or len(device_id) > 128:
             raise ValueError("device_id must be a non-empty string of at most 128 characters")
         key = self._validate_key(key)
