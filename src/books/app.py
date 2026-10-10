@@ -45,6 +45,7 @@ PAGES = {
     "اسکن و OCR": "اسکن متن و اصلاح قبل از ذخیره",
     "گزارش‌ها": "گزارش موجودی و مطالعه",
     "دستیار هوشمند": "خلاصه، پرسش، پیشنهاد و برنامه مطالعه با AI",
+    "جستجوی معنایی": "نمایه‌سازی، جستجوی معنایی و پیشنهاد مشابه",
     "تنظیمات": "تنظیمات برنامه و داده‌ها",
 }
 
@@ -1406,6 +1407,24 @@ def render_ai_assistant() -> None:
         if goal and st.button("ساخت برنامه مطالعه"): st.write(BookAIService(local_first_provider()).reading_plan("\n".join(r["title"] for r in rows),goal))
 
 
+
+def render_semantic_search() -> None:
+    from .semantic_service import SemanticLibraryService
+    settings=load_settings(); service=SemanticLibraryService(Database(settings.db_path)); service.db.migrate()
+    st.subheader("جستجوی معنایی و پیشنهاد کتاب")
+    if st.button("بازسازی نمایه معنایی"): st.success(f"{service.rebuild()} کتاب نمایه شد.")
+    query=st.text_input("جستجوی معنایی",placeholder="مثلاً فلسفه و اندیشه")
+    if query:
+        try:
+            results=service.search(query,limit=10)
+            st.dataframe([{"کتاب":r.title,"امتیاز ترکیبی":round(r.score,3),"شباهت معنایی":round(r.semantic,3),"امتیاز واژگانی":round(r.lexical,3)} for r in results],use_container_width=True)
+        except ValueError as exc: st.error(str(exc))
+    rows=service._documents()
+    if rows:
+        labels={item_id:text[:80] for item_id,text in rows}; selected=st.selectbox("برای پیشنهاد مشابه انتخاب کنید",list(labels),format_func=lambda x:labels[x])
+        if st.button("پیشنهاد کتاب‌های مشابه"): st.write([r.book_id for r in service.recommend(selected,5)])
+
+
 def render_reading_sessions() -> None:
     settings = load_settings()
     repository = BookRepository(Database(settings.db_path))
@@ -1744,6 +1763,8 @@ def render_page(page: str) -> None:
         render_reports()
     elif page == "دستیار هوشمند":
         render_ai_assistant()
+    elif page == "جستجوی معنایی":
+        render_semantic_search()
     elif page == "برچسب و قفسه":
         render_organization()
     elif page == "انتقال داده":
