@@ -36,3 +36,24 @@ The reproducible release gate builds both sdist and wheel, installs the wheel in
 A release is accepted only when clean-database migration, existing-database migration idempotency, REST/MCP runtime, offline smoke, full pytest, lint, Docker build, and the clean wheel-install/package runtime gate are green in CI. Release tags are created only from the verified main commit after that gate passes.
 
 See [Release Governance](docs/RELEASE-GOVERNANCE.md) for the branch-protection policy, release checklist, tag rules, and final release boundary.
+
+
+## Scheduled automatic backups
+
+The HTTP/MCP runtime can run scheduled SQLite backups in its own managed
+background worker. Set `BOOKS_BACKUP_PATH` to a destination such as
+`data/backups/latest.sqlite3` to enable it; leaving the variable empty keeps
+the scheduler disabled. `BOOKS_BACKUP_INTERVAL_HOURS` defaults to `24` and
+`BOOKS_BACKUP_RETENTION` defaults to `5` timestamped snapshots. The stable
+destination always points to the latest successful backup, while timestamped
+snapshots are pruned to the configured retention count. Backup and state files
+are written with owner-only permissions. The worker stops when the runtime
+server closes, and failures are recorded in the adjacent `.state` file without
+replacing the last successful backup. On restart, the worker reads the last
+successful timestamp from that state file and resumes the remaining interval
+instead of resetting the full schedule.
+
+The scheduler uses SQLite's online backup API and validates the resulting
+database before publishing it. Backups are disabled until a destination is
+explicitly configured so the application does not silently create files in an
+unexpected location.
