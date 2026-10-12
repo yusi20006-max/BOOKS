@@ -1,4 +1,5 @@
 import json
+import threading
 
 import pytest
 
@@ -102,3 +103,32 @@ def test_scheduler_uses_full_interval_when_no_successful_run_is_recorded(tmp_pat
         BackupService(source), BackupSchedule(6), tmp_path / "backups" / "latest.sqlite3"
     )
     assert scheduler._seconds_until_next_run() == 6 * 3600
+
+
+def test_scheduler_rejects_overlapping_backup_for_same_destination(tmp_path):
+    source = tmp_path / "books.sqlite3"
+    Database(source).migrate()
+    destination = tmp_path / "backups" / "latest.sqlite3"
+    entered = threading.Event()
+    release = threading.Event()
+
+    class SlowBackup:
+        def create_backup_bytes(self):
+            entered.set()
+            assert release.wait(timeout=5)
+            return BackupService(source).create_backup_bytes()
+
+    scheduler = BackupScheduler(SlowBackup(), BackupSchedule(24), destination)
+    worker = threading.Thread(target=scheduler.run_once)
+    worker.start()
+    assert entered.wait(timeout=5)
+    try:
+        with pytest.raises(RuntimeError, match="backup already running"):
+            scheduler.run_once()
+        assert scheduler.run_once_recovering() is None
+    finally:
+        release.set()
+        worker.join(timeout=5)
+    assert not worker.is_alive()
+    assert destination.exists()
+    assert len(list(destination.parent.glob("latest-*.sqlite3"))) == 1
