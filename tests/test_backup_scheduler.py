@@ -104,6 +104,64 @@ def test_scheduler_uses_full_interval_when_no_successful_run_is_recorded(tmp_pat
     assert scheduler._seconds_until_next_run() == 6 * 3600
 
 
+@pytest.mark.parametrize("interval", [True, 0, -1, 1.5, "24"])
+def test_backup_schedule_rejects_non_positive_or_non_integer_intervals(interval):
+    with pytest.raises(ValueError, match="positive integer"):
+        BackupSchedule(interval)
+
+
+@pytest.mark.parametrize("retention", [True, 0, -1, 1.5, "5"])
+def test_backup_scheduler_rejects_non_integer_retention(tmp_path, retention):
+    with pytest.raises(ValueError, match="positive integer"):
+        BackupScheduler(
+            BackupService(tmp_path / "missing.sqlite3"),
+            BackupSchedule(24),
+            tmp_path / "backups" / "latest.sqlite3",
+            retention=retention,
+        )
+
+
+def test_concurrent_manual_runs_are_serialized_and_keep_unique_snapshots(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    source = tmp_path / "books.sqlite3"
+    Database(source).migrate()
+    destination = tmp_path / "backups" / "latest.sqlite3"
+    scheduler = BackupScheduler(
+        BackupService(source), BackupSchedule(24), destination, retention=10
+    )
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(lambda _: scheduler.run_once(), range(4)))
+
+    assert results == [destination] * 4
+    snapshots = list(destination.parent.glob("latest-*.sqlite3"))
+    assert len(snapshots) == 4
+    assert all(path.stat().st_mode & 0o777 == 0o600 for path in snapshots)
+    assert destination.stat().st_mode & 0o777 == 0o600
+    assert json.loads(scheduler.state_path.read_text(encoding="utf-8"))["status"] == "ok"
+
+
+def test_pruning_ignores_symlinks_and_directories(tmp_path):
+    source = tmp_path / "books.sqlite3"
+    Database(source).migrate()
+    destination = tmp_path / "backups" / "latest.sqlite3"
+    scheduler = BackupScheduler(BackupService(source), BackupSchedule(24), destination, retention=1)
+    scheduler.run_once()
+    outside = tmp_path / "keep.sqlite3"
+    outside.write_bytes(b"do not delete")
+    link = destination.parent / "latest-000-symlink.sqlite3"
+    directory = destination.parent / "latest-000-directory.sqlite3"
+    try:
+        link.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unavailable on this platform")
+    directory.mkdir()
+    scheduler.run_once()
+    assert outside.read_bytes() == b"do not delete"
+    assert link.is_symlink()
+    assert directory.is_dir()
+
 def test_background_scheduler_runs_backup_when_timer_expires(tmp_path, monkeypatch):
     import threading
 
