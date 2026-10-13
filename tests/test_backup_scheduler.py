@@ -177,8 +177,6 @@ def test_background_scheduler_runs_backup_when_timer_expires(tmp_path, monkeypat
         result = original_run()
         if result is not None:
             completed.set()
-        # Keep this test deterministic: the worker exits after its first due run.
-        scheduler._stop.set()
         return result
 
     # Exercise the real background loop and Event.wait path without waiting an hour.
