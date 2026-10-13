@@ -162,6 +162,7 @@ def test_pruning_ignores_symlinks_and_directories(tmp_path):
     assert link.is_symlink()
     assert directory.is_dir()
 
+
 def test_background_scheduler_runs_backup_when_timer_expires(tmp_path, monkeypatch):
     import threading
 
