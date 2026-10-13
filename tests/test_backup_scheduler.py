@@ -161,3 +161,37 @@ def test_pruning_ignores_symlinks_and_directories(tmp_path):
     assert outside.read_bytes() == b"do not delete"
     assert link.is_symlink()
     assert directory.is_dir()
+
+
+def test_background_scheduler_runs_backup_when_timer_expires(tmp_path, monkeypatch):
+    import threading
+
+    source = tmp_path / "books.sqlite3"
+    Database(source).migrate()
+    destination = tmp_path / "backups" / "latest.sqlite3"
+    scheduler = BackupScheduler(BackupService(source), BackupSchedule(1), destination)
+    completed = threading.Event()
+    original_run = scheduler.run_once_recovering
+
+    def run_due_backup():
+        result = original_run()
+        if result is not None:
+            completed.set()
+        return result
+
+    # Exercise the real background loop and Event.wait path without waiting an hour.
+    monkeypatch.setattr(scheduler, "_seconds_until_next_run", lambda: 0.01)
+    monkeypatch.setattr(scheduler, "run_once_recovering", run_due_backup)
+    scheduler.start()
+    try:
+        assert completed.wait(timeout=3), "scheduled worker did not create a backup"
+        assert destination.is_file()
+        state = json.loads(scheduler.state_path.read_text(encoding="utf-8"))
+        assert state["status"] == "ok"
+        assert state["last_run"]
+        assert len(list(destination.parent.glob("latest-*.sqlite3"))) == 1
+    finally:
+        scheduler.stop()
+
+    assert scheduler._thread is not None
+    assert not scheduler._thread.is_alive()
