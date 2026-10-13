@@ -117,7 +117,7 @@ class BackupScheduler:
     def run_once_recovering(self) -> Path | None:
         try:
             return self.run_once()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - scheduled worker must survive backend failures
             try:
                 self._atomic(
                     self.state_path,
