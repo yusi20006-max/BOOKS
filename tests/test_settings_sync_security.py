@@ -1,4 +1,5 @@
 import json
+import socket
 import threading
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -78,18 +79,17 @@ def test_settings_sync_http_rejects_oversized_request_body(tmp_path):
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        request = Request(
-            f"http://127.0.0.1:{server.server_port}/v1/sync/settings",
-            data=b" " * (1_048_577),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": "Bearer a-long-test-token",
-            },
-            method="POST",
-        )
-        with pytest.raises(HTTPError) as exc:
-            urlopen(request, timeout=5)
-        assert exc.value.code == 413
+        with socket.create_connection(("127.0.0.1", server.server_port), timeout=5) as client:
+            client.sendall(
+                b"POST /v1/sync/settings HTTP/1.1\\r\\n"
+                b"Host: 127.0.0.1\\r\\n"
+                b"Authorization: Bearer a-long-test-token\\r\\n"
+                b"Content-Type: application/json\\r\\n"
+                b"Content-Length: 1048577\\r\\n"
+                b"Connection: close\\r\\n\\r\\n"
+            )
+            response = client.recv(4096)
+        assert b" 413 " in response.split(b"\\r\\n", 1)[0]
     finally:
         server.shutdown()
         thread.join(timeout=3)
