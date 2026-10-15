@@ -195,3 +195,48 @@ def test_background_scheduler_runs_backup_when_timer_expires(tmp_path, monkeypat
 
     assert scheduler._thread is not None
     assert not scheduler._thread.is_alive()
+
+
+
+def test_separate_scheduler_instances_reject_overlapping_destination(tmp_path):
+    import threading
+
+    source = tmp_path / "books.sqlite3"
+    Database(source).migrate()
+    destination = tmp_path / "backups" / "latest.sqlite3"
+    entered = threading.Event()
+    release = threading.Event()
+
+    class SlowBackup:
+        def create_backup_bytes(self):
+            entered.set()
+            assert release.wait(timeout=5)
+            return BackupService(source).create_backup_bytes()
+
+    first = BackupScheduler(SlowBackup(), BackupSchedule(24), destination)
+    second = BackupScheduler(BackupService(source), BackupSchedule(24), destination)
+    worker_errors = []
+
+    def run_first():
+        try:
+            first.run_once()
+        except Exception as exc:  # noqa: BLE001 - surface worker errors in the main test thread
+            worker_errors.append(exc)
+
+    worker = threading.Thread(target=run_first)
+    worker.start()
+    try:
+        assert entered.wait(timeout=5), "first backup did not reach the synchronization point"
+        with pytest.raises(RuntimeError, match="backup already running"):
+            second.run_once()
+        assert second.run_once_recovering() is None
+    finally:
+        release.set()
+        worker.join(timeout=5)
+    assert not worker.is_alive()
+    assert worker_errors == []
+    assert destination.is_file()
+    assert json.loads(
+        destination.with_suffix(destination.suffix + ".state").read_text(encoding="utf-8")
+    )["status"] == "ok"
+    assert len(list(destination.parent.glob("latest-*.sqlite3"))) == 1
