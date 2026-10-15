@@ -108,7 +108,11 @@ def apply_remote_changes(db: Database, changes: list[dict[str, Any]]) -> int:
         if not isinstance(key, str) or not isinstance(version, int):
             continue
         normalized = key.lower().replace("-", "").replace("_", "").replace(".", "")
-        if any(part in normalized for part in ("token", "secret", "password", "credential", "apikey", "privatekey")):
+        secret_parts = (
+            "token", "secret", "password", "credential", "apikey", "privatekey",
+            "accesskey", "authorization", "bearer", "cookie", "sessionid",
+        )
+        if any(part in normalized for part in secret_parts):
             continue
         if version <= current.get(key, {}).get("version", 0):
             continue

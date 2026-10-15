@@ -8,7 +8,10 @@ from typing import Any
 from .db import Database
 
 _KEY = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
-_SECRET_PARTS = ("token", "secret", "password", "credential", "api_key", "apikey", "private_key")
+_SECRET_PARTS = (
+    "token", "secret", "password", "credential", "apikey", "privatekey",
+    "accesskey", "authorization", "bearer", "cookie", "sessionid",
+)
 
 
 class SettingsSyncRuntime:
@@ -48,8 +51,7 @@ class SettingsSyncRuntime:
             raise ValueError("setting key must be a lowercase identifier")
         # Normalize separators so api-key/private-key variants are blocked too.
         normalized = re.sub(r"[-_.]", "", key.lower())
-        secret_parts = ("token", "secret", "password", "credential", "apikey", "privatekey")
-        if any(part in normalized for part in secret_parts):
+        if any(part in normalized for part in _SECRET_PARTS):
             raise ValueError("secret-bearing settings cannot be synchronized")
         return key
 
