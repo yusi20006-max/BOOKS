@@ -1,4 +1,5 @@
 import json
+import threading
 
 import pytest
 
@@ -195,3 +196,35 @@ def test_background_scheduler_runs_backup_when_timer_expires(tmp_path, monkeypat
 
     assert scheduler._thread is not None
     assert not scheduler._thread.is_alive()
+
+
+
+def test_separate_scheduler_instances_reject_overlapping_backup_for_same_destination(tmp_path):
+    source = tmp_path / "books.sqlite3"
+    Database(source).migrate()
+    destination = tmp_path / "backups" / "latest.sqlite3"
+    entered = threading.Event()
+    release = threading.Event()
+
+    class SlowBackup:
+        def create_backup_bytes(self):
+            entered.set()
+            assert release.wait(timeout=5)
+            return BackupService(source).create_backup_bytes()
+
+    first = BackupScheduler(SlowBackup(), BackupSchedule(24), destination)
+    second = BackupScheduler(BackupService(source), BackupSchedule(24), destination)
+    worker = threading.Thread(target=first.run_once)
+    worker.start()
+    assert entered.wait(timeout=5)
+    try:
+        with pytest.raises(RuntimeError, match="backup already running"):
+            second.run_once()
+        assert second.run_once_recovering() is None
+    finally:
+        release.set()
+        worker.join(timeout=5)
+    assert not worker.is_alive()
+    assert destination.is_file()
+    assert len(list(destination.parent.glob("latest-*.sqlite3"))) == 1
+    assert json.loads(second.state_path.read_text(encoding="utf-8"))["status"] == "ok"
