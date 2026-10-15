@@ -173,3 +173,38 @@ def test_search_merged_detailed_reports_all_ok_as_no_failures():
     merged, failures = service.search_merged_detailed("کتاب")
 
     assert merged and failures == ()
+
+
+def test_successful_discovery_search_is_cached_across_service_instances():
+    from books.discovery import _DISCOVERY_CACHE
+
+    _DISCOVERY_CACHE.clear()
+    provider = FakeProvider(("cached-result",))
+    first = DiscoveryService([("provider", provider)]).search("same query")
+    second = DiscoveryService([("provider", provider)]).search("same query")
+    assert second is first
+    assert provider.calls == 1
+
+
+def test_provider_failures_are_not_cached():
+    from books.discovery import _DISCOVERY_CACHE
+
+    _DISCOVERY_CACHE.clear()
+    provider = FakeProvider(error="temporarily offline")
+    service = DiscoveryService([("provider", provider)])
+    first = service.search("retry this query")
+    second = service.search("retry this query")
+    assert first.failures and second.failures
+    assert provider.calls == 2
+
+
+def test_discovery_cache_key_includes_pagination_and_strategy():
+    from books.discovery import _DISCOVERY_CACHE
+
+    _DISCOVERY_CACHE.clear()
+    provider = FakeProvider(("result",))
+    service = DiscoveryService([("provider", provider)])
+    service.search("query", start_index=0, limit=10)
+    service.search("query", start_index=10, limit=10)
+    service.search("query", start_index=0, limit=5)
+    assert provider.calls == 3
