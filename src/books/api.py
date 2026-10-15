@@ -13,7 +13,6 @@ from . import __version__
 from .cache import TTLCache
 from .db import BookRepository
 
-
 _READ_CACHE: TTLCache[tuple, Any] = TTLCache(max_entries=256, ttl_seconds=5)
 
 
