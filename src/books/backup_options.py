@@ -45,6 +45,14 @@ def decrypt_backup(data: bytes, password: str) -> bytes:
     return Fernet(key).decrypt(data[9:])
 
 
+_BACKUP_LOCKS_GUARD = threading.Lock()
+_BACKUP_LOCKS: dict[str, threading.Lock] = {}
+
+
+class BackupAlreadyRunning(RuntimeError):
+    """Raised when another scheduler instance is backing up the same destination."""
+
+
 class BackupScheduler:
     def __init__(self, service, schedule: BackupSchedule, destination: str | Path, *, retention: int = 5):
         if isinstance(retention, bool) or not isinstance(retention, int) or retention < 1:
@@ -58,6 +66,9 @@ class BackupScheduler:
         self._thread = None
         self._run_lock = threading.Lock()
         self._start_lock = threading.Lock()
+        lock_key = str(self.destination.resolve())
+        with _BACKUP_LOCKS_GUARD:
+            self._destination_lock = _BACKUP_LOCKS.setdefault(lock_key, threading.Lock())
 
     def _atomic(self, path: Path, data: bytes) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -74,28 +85,35 @@ class BackupScheduler:
             temp.unlink(missing_ok=True)
 
     def run_once(self) -> Path:
-        # Serialize manual runs and the scheduled worker so they cannot race on
-        # the latest file, state record, or retention pruning.
+        # Serialize runs on one scheduler; reject overlap from another scheduler
+        # targeting the same destination in this process.
         with self._run_lock:
-            data = self.service.create_backup_bytes()
-            stamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%f%z")
-            archive = self.destination.with_name(
-                f"{self.destination.stem}-{stamp}{self.destination.suffix}"
-            )
-            self._atomic(archive, data)
-            try:
-                self._atomic(self.destination, data)
-                self._atomic(
-                    self.state_path,
-                    json.dumps(
-                        {"last_run": datetime.now().astimezone().isoformat(), "status": "ok"}
-                    ).encode(),
+            if not self._destination_lock.acquire(blocking=False):
+                raise BackupAlreadyRunning(
+                    f"backup already running for {self.destination}"
                 )
-            except Exception:
-                archive.unlink(missing_ok=True)
-                raise
-            self._prune()
-            return self.destination
+            try:
+                data = self.service.create_backup_bytes()
+                stamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%f%z")
+                archive = self.destination.with_name(
+                    f"{self.destination.stem}-{stamp}{self.destination.suffix}"
+                )
+                self._atomic(archive, data)
+                try:
+                    self._atomic(self.destination, data)
+                    self._atomic(
+                        self.state_path,
+                        json.dumps(
+                            {"last_run": datetime.now().astimezone().isoformat(), "status": "ok"}
+                        ).encode(),
+                    )
+                except Exception:
+                    archive.unlink(missing_ok=True)
+                    raise
+                self._prune()
+                return self.destination
+            finally:
+                self._destination_lock.release()
 
     def _prune(self) -> None:
         candidates = [
@@ -117,6 +135,9 @@ class BackupScheduler:
     def run_once_recovering(self) -> Path | None:
         try:
             return self.run_once()
+        except BackupAlreadyRunning:
+            # An overlapping scheduled/manual run is a skip, not a backup failure.
+            return None
         except Exception as exc:  # noqa: BLE001 - scheduled worker must survive backend failures
             try:
                 self._atomic(
