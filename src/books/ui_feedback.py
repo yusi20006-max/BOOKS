@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
-from typing import Any
 
 
 def error_feedback(error: Exception) -> tuple[str, str]:
