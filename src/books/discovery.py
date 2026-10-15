@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, is_dataclass, replace
-import hashlib
-import json
 from typing import Any, Protocol
 
 from .cache import TTLCache
