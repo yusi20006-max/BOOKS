@@ -10,6 +10,15 @@ The runtime binds `127.0.0.1` by default and is loopback-only unless a token is 
 
 `GET /health` is a cheap liveness probe that never touches the database. `GET /health?deep=1` is the documented readiness check: it validates the full database schema (derived from the migration sources) and returns `503` with the missing tables when the database is truncated or unreadable. The `python -m books.health` CLI and backup restore apply the same full validation and reject incomplete databases.
 
+## Runtime observability
+
+Runtime diagnostics are emitted as privacy-conscious JSON lines. Configure
+`BOOKS_LOG_LEVEL` (DEBUG/INFO/WARNING/ERROR/CRITICAL; default INFO); HTTP
+responses include an `X-Request-ID` for correlation. Logs use normalized routes
+and never include tokens, headers, query strings, request bodies, book content,
+client IPs, or exception messages. See
+[`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md) for troubleshooting.
+
 ## UI (Streamlit)
 
 The Streamlit UI is the user-facing application. Any of the following starts it (the server honours `BOOKS_PORT`, default `8501`):
