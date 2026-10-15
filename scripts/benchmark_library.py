@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from books.api import BooksAPI, _READ_CACHE
 from books.db import BookRepository, Database
 
 
@@ -25,9 +26,13 @@ def percentile(values: list[float], fraction: float) -> float:
     return round(ordered[index], 3)
 
 
-def measure(operation: Callable[[], object], repeats: int) -> dict[str, float | int]:
+def measure(
+    operation: Callable[[], object], repeats: int, *, before: Callable[[], object] | None = None
+) -> dict[str, float | int]:
     samples = []
     for _ in range(repeats):
+        if before is not None:
+            before()
         started = time.perf_counter()
         operation()
         samples.append((time.perf_counter() - started) * 1000)
@@ -103,6 +108,23 @@ def run_size(size: int, repeats: int, root: Path) -> dict[str, object]:
         "create_then_delete": measure(create_delete, repeats),
         "count": measure(repo.count, repeats),
     }
+
+    # Measure the API cache independently from the underlying repository scan.
+    # Cold samples clear only the in-process cache before timing; warm samples
+    # prime once and then time repeated hits against an unchanged SQLite file.
+    api = BooksAPI(repo)
+    api_search = lambda: api.request("GET", "/v1/search", query={"q": search_term})
+    api_list = lambda: api.request(
+        "GET", "/v1/books",
+        query={"limit": "50", "offset": str(max(0, size // 2 - 25))},
+    )
+    measurements["api_search_cold"] = measure(api_search, repeats, before=_READ_CACHE.clear)
+    _READ_CACHE.clear()
+    api_search()
+    measurements["api_search_cache_hit"] = measure(api_search, repeats)
+    _READ_CACHE.clear()
+    api_list()
+    measurements["api_list_cache_hit"] = measure(api_list, repeats)
     assert repo.count() == size, "benchmark fixture count drifted"
     assert repo.get(target_id) is not None, "get benchmark fixture missing"
     assert repo.search(search_term, limit=20), "search benchmark fixture missing"
@@ -144,6 +166,7 @@ def main() -> int:
                 "Local synthetic data only; no network calls or personal library access.",
                 "Seed time is reported separately and excluded from operation timings.",
                 "Latency values are observations, not portable CI thresholds.",
+                "API cache-hit measurements are distinct from cold repository timings.",
                 "Compare before/after runs on the same device and software environment.",
             ],
             "results": [run_size(size, args.repeats, root) for size in args.sizes],
