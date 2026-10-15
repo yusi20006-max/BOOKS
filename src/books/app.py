@@ -1659,9 +1659,165 @@ def _settings_flag(env_name: str, value: str | None) -> str:
     return f"`{env_name}`: **{state}**"
 
 
+def _render_settings_sync(settings) -> None:
+    """Explicit opt-in UI for syncing non-secret scalar preferences."""
+    from books.settings_sync import SettingsSyncClient, SettingsSyncConflict
+    from books.settings_sync_ui import (
+        apply_remote_changes,
+        load_sync_preferences,
+        local_values,
+        save_local_value,
+        save_revision,
+        save_sync_preferences,
+    )
+
+    db = Database(settings.db_path)
+    prefs = load_sync_preferences(db)
+    st.subheader("همگام‌سازی تنظیمات بین دستگاه‌ها")
+    st.caption(
+        "این قابلیت اختیاری است. توکن فقط در نشست فعلی استفاده می‌شود و در SQLite "
+        "یا گزارش همگام‌سازی ذخیره نمی‌شود. فقط مقادیر scalar غیرمحرمانه را ارسال کنید."
+    )
+    with st.form("settings-sync-configuration"):
+        enabled = st.checkbox("فعال‌سازی همگام‌سازی (اختیاری)", value=prefs["enabled"])
+        endpoint = st.text_input("نشانی سرویس همگام‌سازی", value=prefs["endpoint"])
+        device_id = st.text_input("شناسه این دستگاه", value=prefs["device_id"])
+        token = st.text_input(
+            "Bearer token (فقط برای این نشست)",
+            value=st.session_state.get("settings_sync_token", ""),
+            type="password",
+        )
+        save_config = st.form_submit_button("ذخیره تنظیمات همگام‌سازی")
+    if save_config:
+        try:
+            save_sync_preferences(
+                db, endpoint=endpoint, device_id=device_id, enabled=enabled
+            )
+            st.session_state["settings_sync_token"] = token
+            st.success("نشانی، شناسه دستگاه و وضعیت فعال‌سازی به‌صورت محلی ذخیره شد.")
+            st.rerun()
+        except ValueError as exc:
+            st.error(f"تنظیمات همگام‌سازی معتبر نیست: {exc}")
+            return
+
+    configured = bool(prefs["enabled"] and prefs["endpoint"] and
+                      st.session_state.get("settings_sync_token"))
+    if not configured:
+        st.info("همگام‌سازی غیرفعال است؛ برای استفاده، آن را فعال و نشانی و توکن را وارد کنید.")
+        return
+
+    client = SettingsSyncClient(
+        prefs["endpoint"], token=st.session_state["settings_sync_token"],
+        timeout=settings.request_timeout_seconds,
+    )
+    values = local_values(db)
+    st.caption(f"آخرین revision دریافت‌شده: {prefs['revision']}")
+    if values:
+        st.markdown("**مقادیر محلی همگام‌شده**")
+        st.json(values)
+
+    with st.form("settings-sync-push"):
+        key = st.text_input("کلید تنظیم غیرمحرمانه", value="ui_preference")
+        raw_value = st.text_input("مقدار به قالب JSON (مثلاً \"dark\"، 16 یا true)", value='"dark"')
+        push = st.form_submit_button("ارسال مقدار به دستگاه‌های دیگر")
+    if push:
+        try:
+            value = json.loads(raw_value)
+            if not (value is None or isinstance(value, (str, int, float, bool))):
+                raise ValueError("فقط مقدار JSON ساده مجاز است.")
+            base_version = values.get(key, {}).get("version", 0)
+            result = client.push(
+                device_id=prefs["device_id"], key=key, value=value,
+                base_version=base_version,
+            )
+            if result.get("applied"):
+                save_local_value(db, key=key, value=value, version=result["version"])
+                st.success("مقدار ارسال و نسخه محلی به‌روزرسانی شد.")
+            else:
+                st.info("مقدار تغییری نکرد؛ نسخه فعلی حفظ شد.")
+        except SettingsSyncConflict as exc:
+            st.session_state["settings_sync_conflict"] = {
+                "key": key, "local_value": value, "current_version": exc.current_version
+            }
+            st.error(
+                f"تعارض برای «{exc.key}»: نسخه سرور {exc.current_version} است. "
+                "مقدار محلی حفظ شد؛ تغییرات سرور را دریافت و یکی از دو نسخه را انتخاب کنید."
+            )
+        except (ValueError, ConnectionError) as exc:
+            st.error(f"ارسال انجام نشد: {exc}")
+
+    if st.button("دریافت تغییرات از سرور", key="settings-sync-pull"):
+        try:
+            result = client.pull(prefs["revision"])
+            changes = result.get("changes", [])
+            conflict = st.session_state.get("settings_sync_conflict")
+            if conflict:
+                remote_match = next(
+                    (item for item in reversed(changes) if item.get("key") == conflict["key"]),
+                    None,
+                )
+                if remote_match:
+                    st.session_state["settings_sync_remote_conflict"] = remote_match
+                changes = [item for item in changes if item.get("key") != conflict["key"]]
+            applied = apply_remote_changes(db, changes)
+            save_revision(db, int(result.get("revision", prefs["revision"])))
+            st.session_state["settings_sync_last_status"] = (
+                f"دریافت انجام شد؛ {applied} مقدار محلی به‌روزرسانی شد."
+            )
+            st.rerun()
+        except (ValueError, ConnectionError) as exc:
+            st.error(f"دریافت انجام نشد؛ داده محلی تغییر نکرد: {exc}")
+    conflict = st.session_state.get("settings_sync_conflict")
+    remote_conflict = st.session_state.get("settings_sync_remote_conflict")
+    if conflict:
+        st.warning(f"برای «{conflict['key']}» تعارض حل‌نشده وجود دارد.")
+        st.write("مقدار محلی:", conflict["local_value"])
+        if remote_conflict:
+            st.write("مقدار سرور:", remote_conflict.get("value"))
+            keep_remote, keep_local = st.columns(2)
+            with keep_remote:
+                if st.button("انتخاب مقدار سرور", key="settings-sync-use-remote"):
+                    save_local_value(
+                        db, key=conflict["key"], value=remote_conflict.get("value"),
+                        version=int(remote_conflict["version"]),
+                    )
+                    st.session_state.pop("settings_sync_conflict", None)
+                    st.session_state.pop("settings_sync_remote_conflict", None)
+                    st.session_state["settings_sync_last_status"] = "نسخه سرور انتخاب شد."
+                    st.rerun()
+            with keep_local:
+                if st.button("حفظ مقدار محلی و تلاش مجدد", key="settings-sync-use-local"):
+                    try:
+                        result = client.push(
+                            device_id=prefs["device_id"], key=conflict["key"],
+                            value=conflict["local_value"],
+                            base_version=int(remote_conflict["version"]),
+                        )
+                        save_local_value(
+                            db, key=conflict["key"], value=conflict["local_value"],
+                            version=int(result.get("version", remote_conflict["version"])),
+                        )
+                        st.session_state.pop("settings_sync_conflict", None)
+                        st.session_state.pop("settings_sync_remote_conflict", None)
+                        st.session_state["settings_sync_last_status"] = "مقدار محلی ارسال شد."
+                        st.rerun()
+                    except SettingsSyncConflict as exc:
+                        conflict["current_version"] = exc.current_version
+                        st.session_state["settings_sync_conflict"] = conflict
+                        st.error("نسخه سرور دوباره تغییر کرد؛ تغییرات را دریافت و دوباره بررسی کنید.")
+                    except (ValueError, ConnectionError) as exc:
+                        st.error(f"ارسال مجدد انجام نشد: {exc}")
+        else:
+            st.caption("برای دریافت نسخه جدید سرور، دکمه دریافت تغییرات را بزنید.")
+    status = st.session_state.get("settings_sync_last_status")
+    if status:
+        st.success(status)
+
+
 def render_settings() -> None:
-    """Read-only panel showing the effective configuration (issue #332)."""
+    """Show effective configuration and the optional settings-sync controls."""
     settings = load_settings()
+    _render_settings_sync(settings)
     st.subheader("پیکربندی مؤثر برنامه")
     st.caption(
         "این صفحه فقط‌خواندنی است؛ مقادیر از متغیرهای محیطی و فایل ‎.env‎ خوانده "
