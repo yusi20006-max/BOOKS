@@ -58,6 +58,31 @@ RTL_STYLESHEET = """
 .stApp .stDownloadButton > button {
     direction: rtl;
 }
+
+/* Never remove the browser focus indicator: keyboard users need a visible,
+   high-contrast location cue across Streamlit's native widgets. */
+.stApp :focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: 3px;
+}
+.stApp [aria-disabled="true"] {
+    cursor: not-allowed;
+}
+@media (forced-colors: active) {
+    .stApp :focus-visible {
+        outline-color: Highlight;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+    }
+}
 .stApp table,
 .stApp [data-testid="stDataFrame"],
 .stApp [data-testid="stTable"] {
