@@ -172,3 +172,31 @@ def test_settings_sync_changes_since_uses_one_read_snapshot(tmp_path, monkeypatc
     complete = runtime.changes_since(snapshot["revision"])
     assert complete["revision"] == 2
     assert [change["key"] for change in complete["changes"]] == ["font_size"]
+
+@pytest.mark.parametrize("missing", ["device_id", "key", "value", "base_version"])
+def test_settings_sync_http_rejects_each_missing_required_field(tmp_path, missing):
+    server = create_server("127.0.0.1", 0, str(tmp_path / "books.sqlite3"), token="secret")
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = {
+            "device_id": "phone",
+            "key": "theme",
+            "value": "dark",
+            "base_version": 0,
+        }
+        payload.pop(missing)
+        request = Request(
+            f"http://127.0.0.1:{server.server_port}/v1/sync/settings",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json", "Authorization": "Bearer secret"},
+            method="POST",
+        )
+        with pytest.raises(HTTPError) as exc:
+            urlopen(request)
+        assert exc.value.code == 400
+        assert "missing required setting fields" in exc.value.read().decode()
+    finally:
+        server.shutdown()
+        thread.join(timeout=3)
+
