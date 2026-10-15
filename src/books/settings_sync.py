@@ -8,7 +8,10 @@ from typing import Any
 from .db import Database
 
 _KEY = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
-_SECRET_PARTS = ("token", "secret", "password", "credential", "apikey", "privatekey", "accesskey", "authorization", "bearer", "cookie", "sessionid")
+_SECRET_PARTS = (
+    "token", "secret", "password", "credential", "apikey", "privatekey",
+    "accesskey", "authorization", "bearer", "cookie", "sessionid",
+)
 
 
 class SettingsSyncRuntime:
