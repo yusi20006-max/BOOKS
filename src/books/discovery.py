@@ -13,6 +13,26 @@ from .models import Book
 from .normalization import normalize_isbn, normalize_text
 
 
+_DISCOVERY_CACHE: TTLCache[tuple, DiscoveryResponse] = TTLCache(max_entries=128, ttl_seconds=300)
+
+
+def _provider_fingerprint(name: str, provider: Provider) -> tuple[str, str, str]:
+    settings = getattr(provider, "settings", None)
+    if settings is None:
+        config_digest = str(id(provider))
+    else:
+        if is_dataclass(settings):
+            values = asdict(settings)
+        elif hasattr(settings, "__dict__"):
+            values = vars(settings)
+        else:
+            values = str(settings)
+        encoded = json.dumps(values, sort_keys=True, ensure_ascii=False, default=str)
+        config_digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    provider_type = type(provider).__module__ + "." + type(provider).__qualname__
+    return name, provider_type, config_digest
+
+
 class Provider(Protocol):
     def search(
         self,
@@ -83,9 +103,21 @@ class DiscoveryService:
         if strategy not in {"parallel", "sequential"}:
             raise ValueError("strategy must be parallel or sequential")
 
+        cache_key = (
+            query.strip(), language, start_index, limit, strategy,
+            tuple(_provider_fingerprint(name, provider) for name, provider in self.providers),
+        )
+        cached = _DISCOVERY_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
         if strategy == "sequential":
-            return self._search_sequential(query, language, start_index, limit)
-        return self._search_parallel(query, language, start_index, limit)
+            response = self._search_sequential(query, language, start_index, limit)
+        else:
+            response = self._search_parallel(query, language, start_index, limit)
+        # Partial provider failures are never cached, allowing quick recovery.
+        if not response.failures:
+            _DISCOVERY_CACHE.set(cache_key, response)
+        return response
 
     @staticmethod
     def merge_results(response: DiscoveryResponse) -> tuple[MergedDiscoveryItem, ...]:
