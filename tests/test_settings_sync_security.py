@@ -72,14 +72,19 @@ def test_settings_sync_http_rejects_unauthenticated_write_and_does_not_mutate(tm
 
 
 def test_settings_sync_http_rejects_oversized_request_body(tmp_path):
-    server = create_server("127.0.0.1", 0, str(tmp_path / "books.sqlite3"), token="a-long-test-token")
+    server = create_server(
+        "127.0.0.1", 0, str(tmp_path / "books.sqlite3"), token="a-long-test-token"
+    )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
         request = Request(
             f"http://127.0.0.1:{server.server_port}/v1/sync/settings",
             data=b" " * (1_048_577),
-            headers={"Content-Type": "application/json", "Authorization": "Bearer a-long-test-token"},
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer a-long-test-token",
+            },
             method="POST",
         )
         with pytest.raises(HTTPError) as exc:
