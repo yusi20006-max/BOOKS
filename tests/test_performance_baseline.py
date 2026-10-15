@@ -32,6 +32,9 @@ def test_performance_baseline_smoke_is_machine_readable():
         "search_exact_token",
         "create_then_delete",
         "count",
+        "api_search_cold",
+        "api_search_cache_hit",
+        "api_list_cache_hit",
     }
     assert all(result["repeats"] == 2 for result in operations.values())
     assert all(result["median_ms"] >= 0 for result in operations.values())
