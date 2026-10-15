@@ -45,6 +45,14 @@ def decrypt_backup(data: bytes, password: str) -> bytes:
     return Fernet(key).decrypt(data[9:])
 
 
+_BACKUP_LOCKS_GUARD = threading.Lock()
+_BACKUP_LOCKS: dict[str, threading.Lock] = {}
+
+
+class BackupAlreadyRunning(RuntimeError):
+    """Raised when a backup for the same destination is already running."""
+
+
 class BackupScheduler:
     def __init__(self, service, schedule: BackupSchedule, destination: str | Path, *, retention: int = 5):
         if isinstance(retention, bool) or not isinstance(retention, int) or retention < 1:
@@ -56,7 +64,9 @@ class BackupScheduler:
         self.state_path = self.destination.with_suffix(self.destination.suffix + ".state")
         self._stop = threading.Event()
         self._thread = None
-        self._run_lock = threading.Lock()
+        lock_key = str(self.destination.resolve())
+        with _BACKUP_LOCKS_GUARD:
+            self._run_lock = _BACKUP_LOCKS.setdefault(lock_key, threading.Lock())
         self._start_lock = threading.Lock()
 
     def _atomic(self, path: Path, data: bytes) -> None:
@@ -74,9 +84,11 @@ class BackupScheduler:
             temp.unlink(missing_ok=True)
 
     def run_once(self) -> Path:
-        # Serialize manual runs and the scheduled worker so they cannot race on
-        # the latest file, state record, or retention pruning.
-        with self._run_lock:
+        # A shared destination lock coordinates multiple scheduler instances in
+        # this process as well as manual and scheduled triggers.
+        if not self._run_lock.acquire(blocking=False):
+            raise BackupAlreadyRunning(f"backup already running for {self.destination}")
+        try:
             data = self.service.create_backup_bytes()
             stamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%f%z")
             archive = self.destination.with_name(
@@ -96,6 +108,8 @@ class BackupScheduler:
                 raise
             self._prune()
             return self.destination
+        finally:
+            self._run_lock.release()
 
     def _prune(self) -> None:
         candidates = [
@@ -117,6 +131,9 @@ class BackupScheduler:
     def run_once_recovering(self) -> Path | None:
         try:
             return self.run_once()
+        except BackupAlreadyRunning:
+            # An overlapping trigger is skipped, not recorded as a backup failure.
+            return None
         except Exception as exc:  # noqa: BLE001 - scheduled worker must survive backend failures
             try:
                 self._atomic(
