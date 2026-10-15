@@ -4,10 +4,10 @@ import argparse
 import json
 import os
 import time
-from uuid import uuid4
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
+from uuid import uuid4
 
 from .api import APIError, BooksAPI
 from .backup import BackupService
