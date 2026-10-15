@@ -23,6 +23,7 @@ from books.rtl import RTL_STYLESHEET
 from books.scanner import BarcodeScanner
 from books.search_ranking import rank_book_row
 from books.transfer import BookTransferService
+from books.ui_feedback import show_empty_state, show_recoverable_error
 
 PAGES = {
     "کتابخانه": "نمایش و مدیریت کتاب‌های ذخیره‌شده",
@@ -516,8 +517,8 @@ def render_backup() -> None:
     if st.button("ساخت Backup", type="primary"):
         try:
             data = backup.create_backup_bytes()
-        except (FileNotFoundError, ValueError) as exc:
-            st.error(str(exc))
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            show_recoverable_error(exc, "ساخت پشتیبان")
         else:
             st.download_button(
                 "دریافت فایل Backup",
@@ -545,7 +546,7 @@ def render_backup() -> None:
         try:
             backup.restore_bytes(uploaded.getvalue(), overwrite=True)
         except (ValueError, OSError) as exc:
-            st.error(f"Restore ناموفق بود: {exc}")
+            show_recoverable_error(exc, "بازیابی پشتیبان", recovery="فایل پشتیبان و فضای ذخیره‌سازی را بررسی کنید؛ سپس Restore را دوباره اجرا کنید.")
         else:
             st.success("Restore با موفقیت انجام شد. برای بارگذاری دوباره داده‌ها برنامه را Refresh کنید.")
 
@@ -589,8 +590,8 @@ def render_transfer() -> None:
                 report = transfer.import_json(payload.decode("utf-8-sig"))
             else:
                 report = transfer.import_csv(payload.decode("utf-8-sig"))
-        except (UnicodeDecodeError, ValueError, KeyError, TypeError) as exc:
-            st.error(f"Import ناموفق بود: {exc}")
+        except (UnicodeDecodeError, ValueError, KeyError, TypeError, OSError) as exc:
+            show_recoverable_error(exc, "واردکردن داده")
         else:
             message = f"{report.imported} کتاب جدید وارد شد و {report.updated} رکورد به‌روزرسانی شد."
             if report.extra_count:
@@ -928,7 +929,10 @@ def render_library() -> None:
         )
 
     if not rows:
-        st.info("کتابخانه هنوز خالی است. از بخش «افزودن کتاب» یک کتاب انتخاب و ذخیره کنید.")
+        show_empty_state(
+            "کتابخانه هنوز خالی است.",
+            next_step="از بخش «افزودن کتاب» یک کتاب پیدا کنید و پس از بررسی ذخیره کنید.",
+        )
         return
 
     view = st.radio(
@@ -985,7 +989,7 @@ def render_discovery() -> None:
             image = Image.open(camera)
             result = BarcodeScanner().scan(image)
         except (OSError, ValueError) as exc:
-            st.error(f"خواندن تصویر ناموفق بود: {exc}")
+            show_recoverable_error(exc, "خواندن تصویر")
         else:
             if result.isbn:
                 st.session_state["scanned_isbn"] = result.isbn
@@ -1031,13 +1035,19 @@ def render_discovery() -> None:
         )
 
     if "discovery_candidates" not in st.session_state:
-        st.info("برای شروع، عنوان، نام نویسنده یا ISBN را جستجو کنید.")
+        show_empty_state(
+            "هنوز جستجویی انجام نشده است.",
+            next_step="عنوان، نام نویسنده یا ISBN را وارد کنید و «جستجوی کتاب» را بزنید.",
+        )
         return
 
     candidates = st.session_state["discovery_candidates"]
     if not candidates:
         if not failures:
-            st.info("نتیجه‌ای یافت نشد؛ عبارت دیگری را امتحان کنید.")
+            show_empty_state(
+                "نتیجه‌ای یافت نشد.",
+                next_step="املای عنوان یا نام نویسنده را تغییر دهید یا ISBN را جستجو کنید.",
+            )
         return
 
     st.subheader(f"{len(candidates)} نتیجه")
@@ -1364,21 +1374,65 @@ def render_knowledge_base() -> None:
 
 def render_ai_assistant() -> None:
     from books.ai_service import BookAIService, local_first_provider
-    settings = load_settings(); repository = BookRepository(Database(settings.db_path)); repository.db.migrate()
-    rows=repository.list(limit=1000)
+
+    settings = load_settings()
+    repository = BookRepository(Database(settings.db_path))
+    repository.db.migrate()
+    rows = repository.list(limit=1000)
     st.subheader("دستیار هوشمند کتاب")
-    if not rows: st.info("ابتدا کتابی به کتابخانه اضافه کنید."); return
-    labels={r["id"]:r["title"] for r in rows}; book_id = select_book_for_actions(repository, rows, key="ai-book")
-    action=st.selectbox("عمل",("summary","questions","recommendation","insights"),format_func=lambda x:{"summary":"خلاصه","questions":"پرسش و پاسخ","recommendation":"پیشنهاد","insights":"بینش"}[x])
-    context=st.text_area("زمینه یا پرسش")
-    if st.button("اجرا",type="primary"):
-        try: st.write(BookAIService(local_first_provider()).action(action,labels[book_id],context))
-        except RuntimeError as exc: st.error(f"اتصال به درگاه هوش مصنوعی ناموفق بود: {exc}")
+    if not rows:
+        show_empty_state(
+            "برای استفاده از دستیار هوشمند ابتدا یک کتاب اضافه کنید.",
+            next_step="از بخش «افزودن کتاب» استفاده کنید؛ اطلاعات کتابخانه محلی باقی می‌ماند.",
+        )
+        return
+
+    labels = {row["id"]: row["title"] for row in rows}
+    book_id = select_book_for_actions(repository, rows, key="ai-book")
+    action = st.selectbox(
+        "عمل",
+        ("summary", "questions", "recommendation", "insights"),
+        format_func=lambda value: {
+            "summary": "خلاصه",
+            "questions": "پرسش و پاسخ",
+            "recommendation": "پیشنهاد",
+            "insights": "بینش",
+        }[value],
+    )
+    context = st.text_area("زمینه یا پرسش")
+    if st.button("اجرا", type="primary"):
+        try:
+            st.write(BookAIService(local_first_provider()).action(action, labels[book_id], context))
+        except (RuntimeError, ConnectionError, TimeoutError, OSError) as exc:
+            show_recoverable_error(exc, "اجرای دستیار هوشمند")
+
     with st.expander("خلاصه فصل/کتاب و برنامه مطالعه"):
-        text=st.text_area("متن",key="ai-text"); chapter=st.text_input("عنوان فصل",key="ai-chapter"); goal=st.text_input("هدف مطالعه",key="ai-goal")
-        if text and st.button("خلاصه کتاب"): st.write(BookAIService(local_first_provider()).summarize(labels[book_id],text))
-        if text and chapter and st.button("خلاصه فصل"): st.write(BookAIService(local_first_provider()).summarize_chapter(labels[book_id],chapter,text))
-        if goal and st.button("ساخت برنامه مطالعه"): st.write(BookAIService(local_first_provider()).reading_plan("\n".join(r["title"] for r in rows),goal))
+        text = st.text_area("متن", key="ai-text")
+        chapter = st.text_input("عنوان فصل", key="ai-chapter")
+        goal = st.text_input("هدف مطالعه", key="ai-goal")
+        if text and st.button("خلاصه کتاب"):
+            try:
+                st.write(BookAIService(local_first_provider()).summarize(labels[book_id], text))
+            except (RuntimeError, ConnectionError, TimeoutError, OSError) as exc:
+                show_recoverable_error(exc, "خلاصه‌سازی کتاب")
+        if text and chapter and st.button("خلاصه فصل"):
+            try:
+                st.write(
+                    BookAIService(local_first_provider()).summarize_chapter(
+                        labels[book_id], chapter, text
+                    )
+                )
+            except (RuntimeError, ConnectionError, TimeoutError, OSError) as exc:
+                show_recoverable_error(exc, "خلاصه‌سازی فصل")
+        if goal and st.button("ساخت برنامه مطالعه"):
+            try:
+                st.write(
+                    BookAIService(local_first_provider()).reading_plan(
+                        "\n".join(row["title"] for row in rows), goal
+                    )
+                )
+            except (RuntimeError, ConnectionError, TimeoutError, OSError) as exc:
+                show_recoverable_error(exc, "ساخت برنامه مطالعه")
 
 
 def render_reading_sessions() -> None:
