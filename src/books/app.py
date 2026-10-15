@@ -19,6 +19,7 @@ from books.lending import Loan, due_state
 from books.models import Book
 from books.providers.google_books import GoogleBooksProvider
 from books.providers.open_library import OpenLibraryProvider
+from books.rtl import RTL_STYLESHEET
 from books.scanner import BarcodeScanner
 from books.search_ranking import rank_book_row
 from books.transfer import BookTransferService
@@ -56,33 +57,7 @@ def configure_page() -> None:
         layout="wide",
         initial_sidebar_state="expanded",
     )
-    st.markdown(
-        """
-        <style>
-        :root { color-scheme: light dark; }
-        /* Keep the document direction LTR so Streamlit's native sidebar
-           positioning/collapse transforms remain intact. Apply RTL only to
-           the application content and sidebar content. */
-        .stApp { direction: ltr; }
-        .stApp .main .block-container {
-            direction: rtl;
-        }
-        .stApp [data-testid="stSidebarContent"] {
-            direction: rtl;
-        }
-        .stApp [data-testid="stSidebarContent"] * {
-            text-align: right;
-        }
-        .stApp input, .stApp textarea, .stApp [data-baseweb="select"] { direction: rtl; }
-        .stApp p, .stApp label, .stApp h1, .stApp h2, .stApp h3 { line-height: 1.9; }
-        .block-container { max-width: 1200px; padding: 2rem 1rem 4rem; }
-        @media (max-width: 768px) {
-            .block-container { padding: 1rem .75rem 3rem; }
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown(RTL_STYLESHEET, unsafe_allow_html=True)
 
 
 def render_sidebar() -> str:
