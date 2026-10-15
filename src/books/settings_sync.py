@@ -46,7 +46,10 @@ class SettingsSyncRuntime:
     def _validate_key(key: Any) -> str:
         if not isinstance(key, str) or not _KEY.fullmatch(key):
             raise ValueError("setting key must be a lowercase identifier")
-        if any(part in key.lower() for part in _SECRET_PARTS):
+        # Normalize separators so api-key/private-key variants are blocked too.
+        normalized = re.sub(r"[-_.]", "", key.lower())
+        secret_parts = ("token", "secret", "password", "credential", "apikey", "privatekey")
+        if any(part in normalized for part in secret_parts):
             raise ValueError("secret-bearing settings cannot be synchronized")
         return key
 
@@ -65,6 +68,10 @@ class SettingsSyncRuntime:
         if isinstance(since, bool) or not isinstance(since, int) or since < 0:
             raise ValueError("since must be a non-negative integer")
         with self.db.connect() as conn:
+            # Pin a single SQLite read snapshot for both rows and revision.
+            # Otherwise a concurrent commit between the SELECTs can advance the
+            # returned cursor past a change that was not included in `rows`.
+            conn.execute("BEGIN")
             rows = conn.execute(
                 """SELECT version, device_id, key, value_json, updated_at
                    FROM sync_settings_changes WHERE version > ? ORDER BY version""",
