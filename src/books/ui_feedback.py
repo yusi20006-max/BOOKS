@@ -54,7 +54,10 @@ def show_recoverable_error(error: Exception, operation: str, *, recovery: str | 
     import streamlit as st
 
     message, hint = error_feedback(error)
-    st.error(f"{operation} انجام نشد: {message}")
+    if operation.endswith("ناموفق بود"):
+        st.error(f"{operation}: {message}")
+    else:
+        st.error(f"{operation} انجام نشد: {message}")
     st.caption(recovery or hint)
 
 
