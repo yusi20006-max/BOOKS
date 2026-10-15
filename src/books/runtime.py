@@ -3,9 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import time
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
+from uuid import uuid4
 
 from .api import APIError, BooksAPI
 from .backup import BackupService
@@ -13,6 +15,7 @@ from .backup_options import BackupSchedule, BackupScheduler
 from .db import BookRepository, Database
 from .health import missing_tables
 from .mcp import build_server
+from .observability import configure_logging, log_event
 from .settings_sync import SettingsSyncConflict, SettingsSyncRuntime
 from .sync import Change, SyncRuntime
 
@@ -42,7 +45,8 @@ class Runtime:
             return {"jsonrpc":"2.0","id":request_id,"error":{"code":-32001,"message":str(exc)}}
         except (TypeError,ValueError) as exc:
             return {"jsonrpc":"2.0","id":request_id,"error":{"code":-32602,"message":str(exc)}}
-        except Exception:  # noqa: BLE001 - map backend failures to JSON-RPC internal error
+        except Exception as exc:  # noqa: BLE001 - map backend failures to JSON-RPC internal error
+            log_event("ERROR", "mcp_internal_error", error_type=type(exc).__name__)
             return {"jsonrpc":"2.0","id":request_id,"error":{"code":-32603,"message":"internal error"}}
         return {"jsonrpc":"2.0","id":request_id,"result":result}
 
@@ -50,9 +54,48 @@ class Runtime:
 def make_handler(runtime: Runtime):
     class Handler(BaseHTTPRequestHandler):
         server_version="BOOKS/1.0"
+
+        def handle_one_request(self):
+            self.request_id = uuid4().hex
+            self.request_started = time.monotonic()
+            super().handle_one_request()
+
+        def _route_name(self):
+            path = urlsplit(getattr(self, "path", "")).path
+            if path.startswith("/v1/books/"):
+                return "/v1/books/{id}"
+            if path in {"/health", "/openapi.json", "/v1/books", "/v1/search",
+                        "/v1/sync/settings", "/v1/sync/changes", "/mcp"}:
+                return path
+            return "/<unmatched>"
+
+        def log_request(self, code="-", _size="-"):
+            try:
+                status = int(code)
+            except (TypeError, ValueError):
+                status = 0
+            log_event(
+                "INFO", "http_request",
+                request_id=getattr(self, "request_id", ""),
+                method=getattr(self, "command", ""),
+                route=self._route_name(),
+                status=status,
+                duration_ms=round((time.monotonic() - getattr(self, "request_started", time.monotonic())) * 1000, 2),
+            )
+
+        def _log_failure(self, error):
+            log_event(
+                "ERROR", "http_request_failed",
+                request_id=getattr(self, "request_id", ""),
+                method=getattr(self, "command", ""),
+                route=self._route_name(),
+                status=500,
+                error_type=type(error).__name__,
+            )
+
         def _write(self,status,payload):
             data=json.dumps(payload,ensure_ascii=False).encode()
-            self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Content-Length",str(len(data))); self.end_headers(); self.wfile.write(data)
+            self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Content-Length",str(len(data))); self.send_header("X-Request-ID", self.request_id); self.end_headers(); self.wfile.write(data)
         def _token(self):
             value=self.headers.get("Authorization","")
             return value[7:] if value.startswith("Bearer ") else None
@@ -67,7 +110,9 @@ def make_handler(runtime: Runtime):
                     try:
                         with runtime.api.repo.db.connect() as conn:
                             absent=sorted(missing_tables(conn))
-                    except Exception:  # noqa: BLE001 - unreadable DB means not ready
+                    except Exception as exc:  # noqa: BLE001 - unreadable DB means not ready
+                        log_event("WARNING", "health_readiness_failed", request_id=self.request_id,
+                                  route="/health", error_type=type(exc).__name__)
                         self._write(503,{"status":"degraded","error":"database is not readable"}); return
                     if absent:
                         self._write(503,{"status":"degraded","missing":absent}); return
@@ -82,7 +127,8 @@ def make_handler(runtime: Runtime):
                     self._write(200,runtime.settings_sync.changes_since(since))
                 except (ValueError,TypeError) as exc: self._write(400,{"error":str(exc)})
                 except APIError as exc: self._write(exc.status,{"error":exc.message})
-                except Exception:  # noqa: BLE001 - never drop connection, return 500 JSON
+                except Exception as exc:  # noqa: BLE001 - never drop connection, return 500 JSON
+                    self._log_failure(exc)
                     self._write(500,{"error":"internal error"})
                 return
             if parsed.path=="/v1/sync/changes":
@@ -93,14 +139,16 @@ def make_handler(runtime: Runtime):
                     self._write(200,{"changes":[asdict(c) for c in runtime.sync.changes_since(since)]})
                 except (ValueError,TypeError): self._write(400,{"error":"since must be a non-negative integer"})
                 except APIError as exc: self._write(exc.status,{"error":exc.message})
-                except Exception:  # noqa: BLE001 - never drop connection, return 500 JSON
+                except Exception as exc:  # noqa: BLE001 - never drop connection, return 500 JSON
+                    self._log_failure(exc)
                     self._write(500,{"error":"internal error"})
                 return
             try:
                 self._write(200,runtime.api.request("GET",parsed.path,token=self._token(),query=query,client_id=self.client_address[0]))
             except APIError as exc: self._write(exc.status,{"error":exc.message})
             except (TypeError,ValueError): self._write(400,{"error":"invalid request"})
-            except Exception:  # noqa: BLE001 - never drop connection, return 500 JSON
+            except Exception as exc:  # noqa: BLE001 - never drop connection, return 500 JSON
+                self._log_failure(exc)
                 self._write(500,{"error":"internal error"})
         def do_POST(self):
             try:
@@ -159,7 +207,8 @@ def make_handler(runtime: Runtime):
                 self._write(404,{"error":"endpoint not found"})
             except APIError as exc: self._write(exc.status,{"error":exc.message})
             except (json.JSONDecodeError,TypeError,ValueError): self._write(400,{"error":"invalid JSON request"})
-            except Exception:  # noqa: BLE001 - never drop connection, return 500 JSON
+            except Exception as exc:  # noqa: BLE001 - never drop connection, return 500 JSON
+                self._log_failure(exc)
                 self._write(500,{"error":"internal error"})
         def log_message(self,*_args): return
     return Handler
@@ -244,6 +293,7 @@ def create_server(
 
 
 def main():
+    configure_logging()
     parser=argparse.ArgumentParser(description="BOOKS HTTP and MCP runtime")
     parser.add_argument("--host",default=os.getenv("BOOKS_HOST","127.0.0.1")); parser.add_argument("--port",type=int,default=int(os.getenv("BOOKS_PORT","8080"))); parser.add_argument("--db",default=os.getenv("BOOKS_DB_PATH","books.sqlite3")); parser.add_argument("--token",default=os.getenv("BOOKS_API_TOKEN"))
     args=parser.parse_args()
