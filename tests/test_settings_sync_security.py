@@ -81,15 +81,15 @@ def test_settings_sync_http_rejects_oversized_request_body(tmp_path):
     try:
         with socket.create_connection(("127.0.0.1", server.server_port), timeout=5) as client:
             client.sendall(
-                b"POST /v1/sync/settings HTTP/1.1\\r\\n"
-                b"Host: 127.0.0.1\\r\\n"
-                b"Authorization: Bearer a-long-test-token\\r\\n"
-                b"Content-Type: application/json\\r\\n"
-                b"Content-Length: 1048577\\r\\n"
-                b"Connection: close\\r\\n\\r\\n"
+                b"POST /v1/sync/settings HTTP/1.1\r\n"
+                b"Host: 127.0.0.1\r\n"
+                b"Authorization: Bearer a-long-test-token\r\n"
+                b"Content-Type: application/json\r\n"
+                b"Content-Length: 1048577\r\n"
+                b"Connection: close\r\n\r\n"
             )
             response = client.recv(4096)
-        assert b" 413 " in response.split(b"\\r\\n", 1)[0]
+        assert b" 413 " in response.split(b"\r\n", 1)[0]
     finally:
         server.shutdown()
         thread.join(timeout=3)
