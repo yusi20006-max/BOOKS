@@ -8,29 +8,8 @@ from dataclasses import asdict, dataclass, is_dataclass, replace
 from typing import Any, Protocol
 
 from .cache import TTLCache
-
 from .models import Book
 from .normalization import normalize_isbn, normalize_text
-
-
-_DISCOVERY_CACHE: TTLCache[tuple, DiscoveryResponse] = TTLCache(max_entries=128, ttl_seconds=300)
-
-
-def _provider_fingerprint(name: str, provider: Provider) -> tuple[str, str, str]:
-    settings = getattr(provider, "settings", None)
-    if settings is None:
-        config_digest = str(id(provider))
-    else:
-        if is_dataclass(settings):
-            values = asdict(settings)
-        elif hasattr(settings, "__dict__"):
-            values = vars(settings)
-        else:
-            values = str(settings)
-        encoded = json.dumps(values, sort_keys=True, ensure_ascii=False, default=str)
-        config_digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-    provider_type = type(provider).__module__ + "." + type(provider).__qualname__
-    return name, provider_type, config_digest
 
 
 class Provider(Protocol):
@@ -62,6 +41,27 @@ class DiscoveryResult:
 class DiscoveryResponse:
     results: tuple[DiscoveryResult, ...]
     failures: tuple[ProviderFailure, ...]
+
+
+_DISCOVERY_CACHE: TTLCache[tuple, DiscoveryResponse] = TTLCache(max_entries=128, ttl_seconds=300)
+
+
+def _provider_fingerprint(name: str, provider: Provider) -> tuple[str, str, str]:
+    settings = getattr(provider, "settings", None)
+    if settings is None:
+        config_digest = str(id(provider))
+    else:
+        if is_dataclass(settings):
+            values = asdict(settings)
+        elif hasattr(settings, "__dict__"):
+            values = vars(settings)
+        else:
+            values = str(settings)
+        encoded = json.dumps(values, sort_keys=True, ensure_ascii=False, default=str)
+        config_digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    provider_type = type(provider).__module__ + "." + type(provider).__qualname__
+    return name, provider_type, config_digest
+
 
 
 @dataclass(frozen=True, slots=True)
