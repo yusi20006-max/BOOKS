@@ -57,6 +57,17 @@ jobs:
       - name: Release package and runtime gate
         run: sh scripts/release-gate.sh
 
+      - name: Large-library performance baseline
+        run: python scripts/benchmark_library.py --sizes 1000 5000 10000 --repeats 15 --output performance-baseline.json
+
+      - name: Upload performance baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: books-performance-baseline-${{ github.sha }}
+          path: performance-baseline.json
+          if-no-files-found: error
+          retention-days: 30
+
   docker:
     name: Docker build
     runs-on: ubuntu-latest
