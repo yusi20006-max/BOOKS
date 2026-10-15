@@ -1036,7 +1036,7 @@ def render_discovery() -> None:
 
     if "discovery_candidates" not in st.session_state:
         show_empty_state(
-            "هنوز جستجویی انجام نشده است.",
+            "برای شروع، هنوز جستجویی انجام نشده است.",
             next_step="عنوان، نام نویسنده یا ISBN را وارد کنید و «جستجوی کتاب» را بزنید.",
         )
         return
@@ -1404,7 +1404,7 @@ def render_ai_assistant() -> None:
         try:
             st.write(BookAIService(local_first_provider()).action(action, labels[book_id], context))
         except (RuntimeError, ConnectionError, TimeoutError, OSError) as exc:
-            show_recoverable_error(exc, "اجرای دستیار هوشمند")
+            show_recoverable_error(exc, "اتصال به درگاه هوش مصنوعی ناموفق بود")
 
     with st.expander("خلاصه فصل/کتاب و برنامه مطالعه"):
         text = st.text_area("متن", key="ai-text")
