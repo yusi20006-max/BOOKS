@@ -60,3 +60,31 @@ The first full baseline ran on GitHub Actions run #520, using Python 3.12.15, SQ
 - These are repository-level SQLite measurements, not concurrent HTTP load, Streamlit rendering, cold-start, or real-device measurements. Do not claim those scenarios are covered.
 
 The raw JSON report is retained as the workflow artifact for run #520 for 30 days. Future baseline workflow runs produce a new artifact; use identical sizes, repeat count, and runner class for meaningful comparisons.
+
+
+## Post-change rerun — 2026-10-15
+
+The expanded harness ran successfully in CI run #539 (Python 3.12.15, SQLite
+3.45.1, Ubuntu x86_64 GitHub-hosted runner; 15 samples per operation).
+
+| Synthetic books | Repository search median / p95 | Cold API search median / p95 | Warm API search-cache hit median / p95 | Warm API list-cache hit median / p95 |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 83.291 / 84.821 ms | 80.152 / 81.101 ms | 0.048 / 0.060 ms | 0.520 / 0.581 ms |
+| 5,000 | 404.152 / 432.240 ms | 406.026 / 438.415 ms | 0.046 / 0.059 ms | 0.511 / 0.549 ms |
+| 10,000 | 823.506 / 847.677 ms | 803.258 / 841.887 ms | 0.047 / 0.060 ms | 0.522 / 0.546 ms |
+
+### Interpretation
+
+- Warm API cache hits are approximately 0.05 ms for search and 0.51–0.52 ms for
+  a 50-book list page in this runner, versus roughly 80–823 ms for cold search.
+  These figures quantify the benefit of repeating an identical API request
+  while the database signature is unchanged.
+- Cold repository search still scales with library size: its median at 10,000
+  books is about 9.9 times the 1,000-book result. The cache does not accelerate
+  a first-time query or a query after the database changes; query/index
+  optimization remains a separate follow-up if that latency is unacceptable.
+- The earlier baseline and this run show material runner-to-run variation for
+  cold search, so the values should not be interpreted as a controlled before /
+  after percentage improvement. The cache-hit measurements are new in this run
+  and were not available in the original baseline.
+- Full report: GitHub Actions run #539, artifact `books-performance-baseline-f3c58dbf24b4cccc2df24b22bde6563d94dbeeec`.
