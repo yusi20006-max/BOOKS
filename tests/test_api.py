@@ -73,3 +73,46 @@ def test_search_requires_a_non_empty_query():
             api.request("GET", "/v1/search", token="x", query=missing)
         assert excinfo.value.status == 400
         assert excinfo.value.message == "query parameter q must not be empty"
+
+
+def test_api_read_cache_reuses_results_and_returns_independent_values(tmp_path):
+    from books.api import _READ_CACHE
+    from books.db import BookRepository, Database
+
+    _READ_CACHE.clear()
+    db = Database(tmp_path / "cached-api.sqlite3")
+    db.migrate()
+    repo = BookRepository(db)
+    repo.create({"id": "cache-1", "title": "cacheable book"})
+    calls = 0
+    original = repo.search
+
+    def counted_search(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    repo.search = counted_search
+    api = BooksAPI(repo)
+    first = api.request("GET", "/v1/search", query={"q": "cacheable"})
+    first[0]["title"] = "caller mutation"
+    second = api.request("GET", "/v1/search", query={"q": "cacheable"})
+    assert calls == 1
+    assert second[0]["title"] == "cacheable book"
+
+
+def test_api_read_cache_invalidates_after_sqlite_write(tmp_path):
+    from books.api import _READ_CACHE
+    from books.db import BookRepository, Database
+
+    _READ_CACHE.clear()
+    db = Database(tmp_path / "cache-invalidation.sqlite3")
+    db.migrate()
+    repo = BookRepository(db)
+    repo.create({"id": "cache-old", "title": "cache token old"})
+    api = BooksAPI(repo)
+    assert [row["id"] for row in api.request("GET", "/v1/search", query={"q": "cache token"})] == ["cache-old"]
+
+    repo.create({"id": "cache-new", "title": "cache token new"})
+    rows = api.request("GET", "/v1/search", query={"q": "cache token"})
+    assert {row["id"] for row in rows} == {"cache-old", "cache-new"}

@@ -1,13 +1,53 @@
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from time import monotonic
 from typing import Any
 
 from . import __version__
+from .cache import TTLCache
 from .db import BookRepository
+
+_READ_CACHE: TTLCache[tuple, Any] = TTLCache(max_entries=256, ttl_seconds=5)
+
+
+def _read_cache_key(repo: BookRepository, method: str, path: str, query: dict[str, str]):
+    """Build a short-lived key that changes when the SQLite database changes."""
+    database = getattr(repo, "db", None)
+    raw_path = getattr(database, "path", None)
+    if raw_path is None or str(raw_path) == ":memory:":
+        return None
+    db_path = Path(raw_path)
+    try:
+        main_stat = db_path.stat()
+    except OSError:
+        return None
+    signature = [(main_stat.st_mtime_ns, main_stat.st_size)]
+    for suffix in ("-wal", "-shm"):
+        try:
+            sidecar = Path(str(db_path) + suffix).stat()
+            signature.append((sidecar.st_mtime_ns, sidecar.st_size))
+        except OSError:
+            signature.append(None)
+    request = json.dumps([method, path, sorted(query.items())], ensure_ascii=False, separators=(",", ":"))
+    digest = hashlib.sha256(request.encode("utf-8")).hexdigest()
+    return (str(db_path.resolve()), tuple(signature), digest)
+
+
+def _read_through_cache(key, operation):
+    if key is None:
+        return operation()
+    cached = _READ_CACHE.get(key)
+    if cached is not None:
+        return copy.deepcopy(cached)
+    result = operation()
+    _READ_CACHE.set(key, copy.deepcopy(result))
+    return result
 
 
 def serialize_book_row(row: Mapping[str, Any] | Any) -> dict[str, Any]:
@@ -107,18 +147,29 @@ class BooksAPI:
         body = body or {}
         if method == "GET" and path == "/v1/books":
             limit, offset = self._pagination(query)
-            return [serialize_book_row(x) for x in self.repo.list(limit, offset)]
+            key = _read_cache_key(self.repo, method, path, query)
+            return _read_through_cache(
+                key, lambda: [serialize_book_row(x) for x in self.repo.list(limit, offset)]
+            )
         if method == "GET" and path == "/v1/search":
             q = query.get("q", "").strip()
             if not q:
                 raise APIError(400, "query parameter q must not be empty")
             limit, offset = self._pagination(query)
-            return [serialize_book_row(x) for x in self.repo.search(q, limit, offset)]
+            key = _read_cache_key(self.repo, method, path, query)
+            return _read_through_cache(
+                key, lambda: [serialize_book_row(x) for x in self.repo.search(q, limit, offset)]
+            )
         if method == "GET" and path.startswith("/v1/books/"):
-            row = self.repo.get(path.rsplit("/", 1)[1])
-            if row is None:
-                raise APIError(404, "book not found")
-            return serialize_book_row(row)
+            key = _read_cache_key(self.repo, method, path, query)
+
+            def fetch_book():
+                row = self.repo.get(path.rsplit("/", 1)[1])
+                if row is None:
+                    raise APIError(404, "book not found")
+                return serialize_book_row(row)
+
+            return _read_through_cache(key, fetch_book)
         raise APIError(404, "endpoint not found")
 
     @staticmethod
