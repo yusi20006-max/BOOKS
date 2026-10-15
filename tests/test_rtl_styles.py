@@ -40,5 +40,21 @@ def test_rtl_stylesheet_is_used_by_the_actual_app_entrypoint():
 
 
 def test_small_screen_spacing_remains_defined():
-    assert "@media (max-width: 768px)" in RTL_STYLESHEET
+    assert "@media (max-width: 900px)" in RTL_STYLESHEET
+    assert "@media (min-width: 641px) and (max-width: 900px)" in RTL_STYLESHEET
+    assert "@media (max-width: 640px)" in RTL_STYLESHEET
     assert "padding: 1rem .75rem 3rem;" in RTL_STYLESHEET
+
+
+def test_mobile_columns_stack_and_primary_controls_remain_tappable():
+    assert "flex-wrap: wrap;" in RTL_STYLESHEET
+    assert "min-width: 100% !important;" in RTL_STYLESHEET
+    assert "min-height: 2.75rem;" in RTL_STYLESHEET
+    assert "white-space: normal;" in RTL_STYLESHEET
+
+
+def test_table_and_image_content_stays_within_viewport():
+    assert ".stApp [data-testid=\"stDataFrame\"]" in RTL_STYLESHEET
+    assert "overflow-x: auto;" in RTL_STYLESHEET
+    assert ".stApp img" in RTL_STYLESHEET
+    assert "height: auto;" in RTL_STYLESHEET
